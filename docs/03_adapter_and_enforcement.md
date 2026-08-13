@@ -1,6 +1,6 @@
 # Codex·Claude Code 어댑터와 강제 모델
 
-> 문서 역할: 도구별 목표 어댑터와 강제 모델. 현재 실행기는 Codex 지침 파일과 신규 Claude Code 설정 파일의 Hook만 부분 구현했다. 데스크톱 앱 어댑터, 기존 설정 안전 병합, CI는 구현 전이며 `docs/09_windows_harness_implementation_baseline.md`의 우선순위를 따른다.
+> 문서 역할: 도구별 목표 어댑터와 강제 모델. 현재 실행기는 Codex 지침 파일, Claude Code Hook의 신규 생성·기존 JSON 병합 백업, 선택형 프로젝트 CI 템플릿까지 구현했다. 데스크톱 앱 어댑터와 기관 보호 브랜치·코드서명 설치기는 구현 전이며 `docs/09_windows_harness_implementation_baseline.md`의 우선순위를 따른다.
 
 ## 1. 도구 차이를 정책 차이로 만들지 않는다
 
@@ -51,7 +51,7 @@ Git 훅 설치는 기존 훅을 덮어쓰지 않는다. 프로젝트 전용 hook
 2. `gg init`, `gg doctor`, `gg verify` 최소 실행기를 구현한다. (부분 구현)
 3. Codex 지침 생성기와 Claude 지침·Hook 생성기를 구현하고, 기존 설정 병합·해제·상태 진단을 추가한다.
 4. 데스크톱 앱별 MCP 어댑터를 지원 버전 단위로 구현한다.
-5. `gg adapter verify`로 생성 파일의 정책 해시·버전을 검증한다.
+5. `gg doctor`와 `gg verify`로 생성 파일·Hook·정책·실행기 해시를 검증한다.
 6. Git 훅과 GitHub Actions 재사용 workflow를 구현한다.
 7. L1·L2·L3 대표 프로젝트로 모든 지원 도구의 동일 결과를 적대적으로 검증한다.
 

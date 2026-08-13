@@ -48,5 +48,5 @@ trust_and_integrity:
     unknown: "네트워크, manifest, 서명, 런타임 중 하나라도 확인하지 못했다. 최신 또는 안전으로 표시하지 않고 release를 차단한다."
 
   policy_mutation_defense:
-    local: "gg adapter verify와 gg verify가 lock의 policy_sha256, 생성 어댑터 해시, 허용 언어를 비교한다."
+    local: "gg doctor와 gg verify가 lock의 policy·실행기·Hook 해시, 생성 어댑터 상태, 허용 언어를 비교한다."
     ci: "CI는 프로젝트에 들어 있는 정책 파일만 신뢰하지 않고 승인된 reusable workflow와 manifest의 정책 해시를 재검증한다."

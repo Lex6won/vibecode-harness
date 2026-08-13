@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "denied": {
+    "npm": ["@supabase/supabase-js", "supabase-js", "firebase", "firebase-admin", "puppeteer", "playwright"],
+    "pypi": ["pyexecjs", "execjs"]
+  },
+  "restricted": {
+    "npm": ["axios", "node-fetch", "undici"],
+    "pypi": ["requests", "httpx", "beautifulsoup4"]
+  },
+  "rule": "This is a local scope policy. gvskb check-package remains the vulnerability and registry evidence source."
+}

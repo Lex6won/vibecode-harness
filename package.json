@@ -9,8 +9,8 @@
   "scripts": {
     "gg": "node ./bin/gg.mjs",
     "test": "node --test ./tests/*.test.mjs",
-    "validate:design": "powershell -ExecutionPolicy Bypass -File ./scripts/validate-design.ps1",
-    "test:design": "powershell -ExecutionPolicy Bypass -File ./scripts/test-validate-design.ps1"
+    "validate:design": "node ./scripts/run-windows-powershell.mjs validate-design.ps1",
+    "test:design": "node ./scripts/run-windows-powershell.mjs test-validate-design.ps1"
   },
   "engines": {
     "node": ">=22.0.0"

@@ -31,3 +31,16 @@ test("Claude hook blocks denied runtime commands", async () => {
   assert.equal(result.code, 2);
   assert.match(result.stderr, /승인되지 않은 언어/);
 });
+
+test("Claude hook blocks direct package installation", async () => {
+  const result = await invoke({ tool_name: "Bash", tool_input: { command: "npm install firebase" } });
+  assert.equal(result.code, 2);
+  assert.match(result.stderr, /gg package check/);
+});
+
+test("Claude hook blocks Windows package command variants", async () => {
+  const npm = await invoke({ tool_name: "Bash", tool_input: { command: "npm.cmd install firebase" } });
+  assert.equal(npm.code, 2, npm.stderr);
+  const pip = await invoke({ tool_name: "Bash", tool_input: { command: "python.exe -m pip install requests" } });
+  assert.equal(pip.code, 2, pip.stderr);
+});

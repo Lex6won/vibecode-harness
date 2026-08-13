@@ -93,7 +93,7 @@ Java, Go, PHP, Ruby, C#, Rust는 기본 금지다. 예외는 프로젝트의 정
 
 ## 5. 패키지와 체커의 역할
 
-새 패키지 설치는 AI가 직접 `npm install` 또는 `pip install`을 실행하는 방식으로 허용하지 않는다. `gg package add <패키지>@<버전>` 또는 설치된 하네스 화면의 같은 기능을 통해서만 다음을 수행한다.
+새 패키지 설치는 AI가 직접 `npm install` 또는 `pip install`을 실행하는 방식으로 허용하지 않는다. 현재는 `gg package check --ecosystem npm|pypi --name <패키지> --version <정확한 버전>`으로 설치 전 체커·기관 정책 검토와 증적 기록을 수행한다. 실제 설치와 잠금파일 변경을 포함한 승인 절차는 Windows 설치기·포털 P0 범위로 구현한다.
 
 1. 승인 레지스트리·대체 패키지·금지 패키지 확인
 2. 체커의 패키지·취약점 검증 호출
@@ -162,7 +162,7 @@ GitHub `main` 변경은 곧바로 사용자 PC에 적용되지 않는다. 다음
 | Codex 적용 | 지침 파일 중심 | 적용 상태 검증과 공통 Git/CI 강제 | P1 |
 | 패키지 게이트 | 정책만 존재 | 승인·위험·예외 판정 계약 | P0 |
 | Git 훅 | 단순 pre-commit | 기존 훅 공존, 실행기 무결성, 실제 commit 시험 | P0 |
-| CI·보호 브랜치 | 미구현 | Windows runner, 승인 번들 검증, 필수 검사 | P0 |
+| CI 템플릿 | 부분 구현 | `gg init --ci`로 승인 Windows runner용 workflow 생성, 기관 보호 규칙 연결 | P0 |
 | 승인 번들·서명·업데이트 | 정책만 존재 | 키 보관·교체·폐기·anti-downgrade | P0 |
 | Windows 설치 패키지 | 미구현 | per-user 설치, 내장 런타임, 복구·제거 | P0 |
 

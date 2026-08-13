@@ -65,6 +65,7 @@ $requiredFiles = @(
   "shared/policies/trust-and-integrity.yaml",
   "shared/policies/checker-contract.yaml",
   "shared/policies/checker-signals.yaml",
+  "shared/references/package-policy.json",
   "adapters/codex/AGENTS.template.md",
   "adapters/claude-code/CLAUDE.template.md",
   "templates/harness.lock.example.json",
@@ -84,6 +85,19 @@ $claude = Get-Text "adapters/claude-code/CLAUDE.template.md"
 $execution = Get-Text "shared/policies/execution-contract.yaml"
 $checkerContract = Get-Text "shared/policies/checker-contract.yaml"
 $checkerSignals = Get-Text "shared/policies/checker-signals.yaml"
+$packagePolicyText = Get-Text "shared/references/package-policy.json"
+
+try {
+  $packagePolicy = $packagePolicyText | ConvertFrom-Json -ErrorAction Stop
+}
+catch {
+  throw "Package policy JSON is malformed"
+}
+foreach ($ecosystem in @("npm", "pypi")) {
+  if ($null -eq $packagePolicy.denied.$ecosystem -or $null -eq $packagePolicy.restricted.$ecosystem) {
+    throw "Package policy is missing denied or restricted list for $ecosystem"
+  }
+}
 
 $expectedLanguages = @("python", "javascript", "typescript")
 $expectedDenied = @("java", "go", "php", "ruby", "csharp", "rust")

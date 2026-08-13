@@ -12,7 +12,7 @@
 
 `shared/harness-core.yaml`과 기관별 `institution-profile.yaml`만 정책 원본으로 유지한다. `AGENTS.md`, `CLAUDE.md`, Claude Hook, Git 훅, CI 워크플로는 이 원본에서 생성되는 산출물이다.
 
-이 원칙은 현재 Codex와 Claude 파일의 TypeScript 허용 여부가 달라진 문제를 제거한다. 어댑터 파일을 사람이 각각 고치지 않고 `gg adapter generate`와 `gg adapter verify`로 동기화한다.
+이 원칙은 현재 Codex와 Claude 파일의 TypeScript 허용 여부가 달라진 문제를 제거한다. `gg init`이 공통 템플릿을 적용하고 `gg doctor`·`gg verify`가 생성 파일과 실행기 해시를 확인한다.
 
 ## 2.1 기존 하네스에서 계승할 장점
 
@@ -99,7 +99,7 @@ Java, Go, PHP, Ruby, C#, Rust 등은 기본 금지다. 필요한 경우 하네�
 
 모든 단계는 `evidence/work-status.json`에 시작·완료 시각, 사용 도구, 적용 정책 버전, 실행 명령, 결과, 체커 프로필, 실패 코드만 기록한다. 원본 소스·비밀값·보고서 본문은 기록 파일에 넣지 않는다.
 
-커밋 전에는 `gg verify --changed`, 배포·이관 전에는 `gg verify --full`을 실행한다. CI는 로컬 결과를 신뢰하지 않고 깨끗한 환경에서 같은 명령을 재실행한다.
+커밋 전에는 `gg verify --run-tests`를 실행한다. Git 훅은 미검증 프로젝트의 테스트를 자동 실행하지 않고 정책·체커 증적 상태만 확인하며, 기관 CI는 승인된 Windows runner에서 `gg verify --run-tests`를 재실행한다.
 
 ## 8. 단계별 구현 계획
 
