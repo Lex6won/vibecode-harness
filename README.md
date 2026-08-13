@@ -6,7 +6,7 @@
 
 이 폴더는 실행형 하네스의 기준선과 개발자용 실행기다. `gg init`, `gg doctor`, `gg start`, `gg design`, `gg build`, `gg verify`, `gg release`를 제공한다. 체커는 이 저장소에서 수정하지 않으며, 체커의 공개 기계 판정 계약이 없다는 한계도 실행 결과에 그대로 표시한다.
 
-현재 실행기는 Node.js 22 이상과 별도 `gvskb` 설치가 있는 개발자 파일럿용이다. Python·Node.js가 없는 일반 공무원 PC를 위한 코드서명 Windows 설치기, 내장 런타임, 승인 번들 업데이트는 아직 구현하지 않았으며 [Windows 구현 기준선](./docs/09_windows_harness_implementation_baseline.md)의 P0 범위다.
+현재 실행기는 Node.js 22 이상과 별도 `gvskb` 설치가 있는 개발자 파일럿용으로도 동작한다. 승인 번들 manifest, Ed25519 서명·파일 해시 검증, 업데이트 하한선, Windows 설치기 차단형 템플릿과 Authenticode 빌드 계약은 구현했다. 다만 Python·Node.js가 없는 일반 공무원 PC에 배포할 실제 EXE에는 기관 코드서명 인증서, 승인 공개키, 내장 Node·Python 런타임, 체커 독립 실행 파일, 새 Windows 계정 실증이 필요하다. 이 전제는 [Windows 구현 기록](./docs/11_windows_release_implementation.md)에서 관리한다.
 
 ## 핵심 원칙
 
@@ -15,7 +15,7 @@
 3. 기능 구현 언어는 Python, JavaScript, TypeScript만 허용한다.
 4. 공무원은 화면을 먼저 보며 요구사항을 구체화한다. 화면 확인 없이 복잡한 구현으로 바로 가지 않는다.
 5. DB·관리자 기능은 기술 용어가 아니라 업무 질문으로 필요성을 판정한다.
-6. 로컬 지침은 안내이고, 현재 강제 구조는 `gg build`, `gg verify`, 안전한 Git 훅, 선택형 CI 템플릿이다. 기관의 보호 브랜치·승인 번들·코드서명 설치기는 별도 P0 배포 과제로 남아 있다.
+6. 로컬 지침은 안내이고, 현재 강제 구조는 `gg build`, `gg verify`, 안전한 Git 훅, 선택형 CI 템플릿이다. 기관의 보호 브랜치와 승인 번들 레지스트리는 별도 P0 배포 과제로 남아 있다.
 7. 체커는 외부 보안 판정 엔진이다. 현재 CLI JSON에 안정적인 최종 판정 필드가 없으므로, 하네스는 판정을 재계산하지 않고 최종 승인·차단을 보류한다.
 
 ## 목표 구조

@@ -78,6 +78,9 @@ test("init creates locked policy, adapters, and project evidence", async () => {
     assert.match(await readFile(join(project, "CLAUDE.md"), "utf8"), /vibecode-harness/);
     assert.match(await readFile(join(project, ".claude", "settings.json"), "utf8"), /PreToolUse/);
     assert.match(await readFile(join(project, ".vibecode-harness", "bin", "gg.mjs"), "utf8"), /verifyCommand/);
+    const localRunner = await runCommand(process.execPath, [join(project, ".vibecode-harness", "bin", "gg.mjs"), "doctor", "--project", project], project);
+    assert.notEqual(localRunner.code, 70, localRunner.stderr || localRunner.stdout);
+    assert.doesNotMatch(localRunner.stderr, /ERR_MODULE_NOT_FOUND/);
   });
 });
 
