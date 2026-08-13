@@ -1,0 +1,47 @@
+checker_contract:
+  version: "1.1"
+  engine: "vibecode-checker (gvskb)"
+  ownership: "The checker is an external engine. This harness must not change, patch, or recreate its verdict logic."
+
+  invocation:
+    git_hook_and_ci: "cli_only"
+    ai_tool_development: "mcp_optional_advisory"
+    reason: "Git and CI invoke the documented gvskb CLI. MCP use is advisory during AI-assisted development."
+
+  valid_profiles:
+    - public-default-strict
+    - internal-db-query
+    - web-civil-service
+    - civil-complaint-chatbot
+  profile_rule: "Never use a non-existent profile. profile_fallback is an incomplete result, never a pass."
+
+  scan_plans:
+    quick:
+      meaning: "A harness-defined limited scope for rapid feedback; it is not a checker profile or a release decision."
+      checker_profile: "public-default-strict"
+      required_arguments: ["--format", "json", "--check-deps", "--fail-on", "never"]
+      limitation: "Excluded files and scope are recorded as evidence. A quick scan never replaces a standard scan."
+    standard:
+      meaning: "Full project source and declared/installed dependency evidence before commit or release."
+      required_arguments: ["--format", "json", "--check-deps", "--include-installed", "--env", "{env_grade}", "--fail-on", "never"]
+      profile_source: "institution-profile.yaml standard_scan checker_profile_by_network_profile"
+      limitation: "File-limit truncation, missing dependencies, or stale intelligence are never silently treated as safe."
+
+  machine_verdict_contract:
+    status: "pending_upstream_machine_verdict"
+    current_cli_fact: "Current gvskb scan JSON does not publish a stable top-level gate_status or verdict field."
+    harness_rule: "Do not infer an approved, blocked, or conditional checker result by recombining raw fields."
+    prohibited_inference_sources: ["summary.blocked", "finding severity alone", "rendered HTML", "rendered Markdown"]
+    documented_cli_signal: "The documented gvskb --fail-on block exit code may stop a commit only with complete raw evidence. It is not used to claim release approval or reconstruct conditional verdicts."
+    required_future_fields: ["gate_status.verdict", "gate_status.blocked", "gate_status.incomplete_reasons"]
+    implementation_effect: "Until the checker publishes a documented machine-verdict contract, gg verify may retain raw evidence but must end final checker approval as pending/review-required."
+
+  raw_evidence_contract:
+    required_json_fields: ["scanned_files", "findings", "profile_fallback"]
+    dependency_evidence: "--check-deps is mandatory. --include-installed is mandatory for standard scans."
+    empty_scan_rule: "An empty scanned_files array is incomplete and must not pass."
+    report_rule: "Do not copy, rename, or store report contents. Record only local path, SHA-256, and generated time."
+
+  dependency_rule:
+    package_gate: "Before installing a package, invoke the approved package gate or checker package review path."
+    vendor_bundles: "--check-deps automatically audits discovered vendor bundles; scan-vendor-bundles is not a CLI command."

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VibeCode Harness Work Status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "started_at", "policy", "steps"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{8,128}$"},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["bundle_id", "policy_sha256", "checker_version"],
+      "properties": {
+        "bundle_id": {"type": "string"},
+        "policy_sha256": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
+        "checker_version": {"type": "string"}
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "status", "started_at"],
+        "properties": {
+          "name": {"type": "string", "enum": ["init", "start", "design", "build", "verify", "release"]},
+          "status": {"type": "string", "enum": ["started", "passed", "conditional", "blocked", "incomplete", "failed"]},
+          "started_at": {"type": "string", "format": "date-time"},
+          "completed_at": {"type": "string", "format": "date-time"},
+          "exit_code": {"type": "integer", "minimum": 0, "maximum": 255},
+          "gate_verdict": {"type": "string", "enum": ["approved", "conditional", "blocked", "undetermined"]},
+          "report_references": {
+            "type": "array", "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["relative_path", "sha256", "created_at"],
+              "properties": {
+                "relative_path": {"type": "string", "pattern": "^(?!.*\\.\\.)(?![A-Za-z]:)(?!/)(?!\\\\).+"},
+                "sha256": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
+                "created_at": {"type": "string", "format": "date-time"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

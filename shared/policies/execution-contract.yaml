@@ -1,0 +1,61 @@
+execution_contract:
+  rule: "AI tool instructions alone do not enforce a workflow. The same verification command runs locally, in Git hooks, and in CI."
+
+  commands:
+    gg_init:
+      creates: [harness.lock, AGENTS.md, CLAUDE.md, tool_configs, git_hooks, project_template]
+      validates: [approved_signed_bundle, approved_track, runtime_availability, checker_connection]
+    gg_start:
+      creates: [feature_brief, work_status, screen_map]
+      validates: [user_scope, maturity_level, risk_questions]
+    gg_design:
+      creates: [screen_prototype, screen_function_spec, data_admin_decision]
+      validates: [visual_review_gate]
+    gg_build:
+      creates: [runnable_source, change_log]
+      validates: [allowed_language, approved_runtime, package_gate_before_install]
+    gg_verify:
+      validates: [harness_lock_integrity, policy_signature, syntax, tests, scenario_test, package_gate, raw_checker_scan, dependency_audit, evidence_redaction]
+      exit_codes:
+        0: commit_eligible_with_or_without_release_review
+        10: policy_or_runtime_block
+        20: package_gate_block
+        30: test_or_scenario_failure
+        40: reserved_checker_block
+        41: checker_incomplete
+        42: checker_review_required
+    gg_release:
+      validates: [gg_verify, full_checker_reports, sbom, human_approval, checker_machine_verdict]
+      creates: [release_manifest, evidence_bundle]
+
+  checker_invocation:
+    rule: "MCP may be used during development as advice. Git hooks and CI use the documented gvskb CLI contract in shared/policies/checker-contract.yaml."
+    machine_verdict_contract: "pending_upstream_machine_verdict"
+    current_behavior: "Run the CLI for raw evidence. A documented --fail-on block exit code may stop a commit only after evidence-completeness checks. Never reconstruct a final checker verdict from summary.blocked, severity, HTML, or Markdown."
+    incomplete_rule: "An empty scan, profile_fallback, file-limit truncation, missing dependency evidence, or stale required intelligence ends as checker_incomplete."
+    release_rule: "Release remains checker_review_required until the external checker publishes a stable machine-verdict field."
+
+  enforcement_points:
+    codex:
+      instruction: "AGENTS.md communicates the shared workflow and completion conditions."
+      hard_gate: "Git hooks and CI execute gg verify."
+    claude_code:
+      instruction: "CLAUDE.md communicates the shared workflow and completion conditions."
+      hook: "PreToolUse blocks direct package installation or sensitive changes without the documented gate; Stop checks gg verify evidence."
+      hard_gate: "Git hooks and CI execute gg verify."
+    git_and_ci:
+      rule: "Direct push to main is prohibited. Required CI, human approval, and protected-branch rules are required before merge."
+
+  hook_safety:
+    installation: "gg init never overwrites existing .git/hooks. It creates a project .githooks directory and requires backup, merge, or user confirmation for an existing core.hooksPath."
+    recursion: "Hooks use an expiry marker and GG_VERIFY_RUNNING to prevent recursive gg verify calls."
+    bypass: "A --no-verify hook bypass is logged and cannot bypass CI evidence requirements."
+
+  execution_safety:
+    project_command_rule: "gg verify executes only commands declared in an approved template or harness.lock. It never evaluates arbitrary shell text."
+    install_rule: "Packages use a lockfile and lifecycle scripts are disabled by default. Exceptions require user approval and evidence."
+    local_first_run: "Before the first network, generated-script, or test action, show the impact and command and receive approval."
+    ci_rule: "CI runs in an isolated environment without secrets. A release stops when checker evidence is incomplete, stale, or lacks the upstream machine verdict."
+
+  adapter_integrity:
+    rule: "AGENTS.md and CLAUDE.md are generated from shared templates. gg adapter verify checks template version, allowed languages, and verification command against harness.lock."
