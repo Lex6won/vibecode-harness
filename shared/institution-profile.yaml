@@ -1,0 +1,55 @@
+institution:
+  name: "경기도 공공 바이브코딩 기본 프로파일"
+  profile_version: "0.1.0-design"
+
+implementation_language_policy:
+  allowed_function_implementation_languages:
+    - python
+    - javascript
+    - typescript
+  exception_required_for:
+    - java
+    - go
+    - php
+    - ruby
+    - csharp
+    - rust
+
+runtime_profiles:
+  python_internal:
+    language: python
+    version: "3.11.x or approved later patch"
+    intended_use: [internal_web, automation, data_processing]
+  node_web:
+    language: javascript
+    version: "22.x or approved later LTS"
+    intended_use: [node_api, static_web, tooling]
+  typescript_web:
+    language: typescript
+    compiler_runtime: "approved Node.js toolchain"
+    intended_use: [react_vite, node_api]
+
+security:
+  checker: "vibecode-checker"
+  package_gate: "checker-mediated PyPI/npm verdict"
+  # 'quick' is a harness scan scope, not a gvskb profile. dev-quick is not a valid gvskb profile.
+  quick_scan:
+    checker_profile: "public-default-strict"
+    scope: "changed supported source files plus declared dependency manifests"
+    dependency_audit: "declared dependencies"
+    outcome: "feedback and recorded review; never called an approval"
+  standard_scan:
+    checker_profile_by_network_profile:
+      admin_network: "internal-db-query"
+      citizen_web: "web-civil-service"
+      citizen_chatbot: "civil-complaint-chatbot"
+      default: "public-default-strict"
+    scope: "entire project source and declared plus installed dependencies"
+    dependency_audit: "--check-deps --include-installed"
+    environment_grade: "E1 for local repeated use; E2 for CI or internal server"
+
+design_defaults:
+  visual_prototype: "HTML prototype first; Figma is optional"
+  ask_about_database_in_business_language: true
+  ask_about_admin_in_business_language: true
+  do_not_collect_person_or_department_for_anonymous_usage: true

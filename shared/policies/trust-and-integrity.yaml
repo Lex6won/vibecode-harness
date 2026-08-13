@@ -1,0 +1,52 @@
+trust_and_integrity:
+  principle: "하네스 파일이 존재한다는 사실만으로는 신뢰하지 않는다. 승인된 번들, 서명, 해시, 호환성, 폐기 목록을 함께 검증한다."
+
+  distribution:
+    trusted_source: "기관 승인 번들 레지스트리의 stable 또는 emergency 채널"
+    forbidden_source: "GitHub main 직접 clone 또는 git pull을 통한 운영 하네스 갱신"
+    required_manifest_fields:
+      - bundle_id
+      - harness_version
+      - source_commit
+      - artifact_sha256
+      - policy_sha256
+      - signer_key_id
+      - signature
+      - minimum_allowed_bundle_version
+      - revoked_bundle_ids
+      - issued_at
+      - expires_at
+
+  trust_root:
+    public_key_distribution: "코드서명된 gg 실행기 또는 기관 Windows 인증서 저장소에 고정한 공개키"
+    verification: "gg init, gg doctor, gg update, CI는 manifest 서명과 artifact·policy 해시를 모두 검증한다."
+    key_rollover:
+      rule: "새 키는 기존 신뢰 키로 서명된 전환 manifest 또는 기관 인증서 체인으로만 추가한다."
+      emergency: "키 유출·폐기 시 기관 관리자 승인으로 폐기 목록과 새 키가 포함된 emergency 번들을 배포한다."
+    anti_downgrade:
+      rule: "minimum_allowed_bundle_version 이하이거나 revoked_bundle_ids에 있는 번들은 설치·업데이트·롤백하지 않는다."
+      rollback_rule: "롤백은 이전 정상 번들이면서 anti-downgrade 조건을 통과할 때만 허용한다."
+
+  project_lock:
+    file: "harness.lock.json"
+    minimum_fields:
+      - bundle_id
+      - harness_version
+      - policy_sha256
+      - signer_key_id
+      - allowed_languages
+      - runtime_profile
+      - adapter_versions
+      - generated_at
+    mutation_rule: "사용자가 정책을 바꾸려면 예외 요청 또는 새 승인 번들 적용이 필요하다. lock 파일만 직접 수정하면 gg verify와 CI가 integrity failure로 중단한다."
+
+  installation_state:
+    missing: "공식 설치 버튼만 활성화한다."
+    current: "설치본·서명·해시·정책이 모두 현재 승인 번들과 일치한다."
+    update_available: "공식 설치본이 확인됐고 최신 승인 번들이 더 높다."
+    repair_required: "서명·해시·정책·경로가 일치하지 않거나 폐기된 번들이다. 자동 update가 아니라 공식 복구 설치를 안내한다."
+    unknown: "네트워크, manifest, 서명, 런타임 중 하나라도 확인하지 못했다. 최신 또는 안전으로 표시하지 않고 release를 차단한다."
+
+  policy_mutation_defense:
+    local: "gg adapter verify와 gg verify가 lock의 policy_sha256, 생성 어댑터 해시, 허용 언어를 비교한다."
+    ci: "CI는 프로젝트에 들어 있는 정책 파일만 신뢰하지 않고 승인된 reusable workflow와 manifest의 정책 해시를 재검증한다."

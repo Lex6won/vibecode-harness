@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VibeCode Harness Visual Review Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "reviewed_at", "review_kind", "artifact", "outcome"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "reviewed_at": {"type": "string", "format": "date-time"},
+    "review_kind": {"type": "string", "enum": ["html_prototype", "screen_design", "cli_io_example"]},
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["relative_path", "sha256"],
+      "properties": {
+        "relative_path": {"type": "string", "pattern": "^(?!.*\\.\\.)(?![A-Za-z]:)(?!/)(?!\\\\).+"},
+        "sha256": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"}
+      }
+    },
+    "outcome": {"type": "string", "enum": ["approved", "changes_requested", "not_applicable"]},
+    "decision_summary": {"type": "string", "maxLength": 500}
+  }
+}

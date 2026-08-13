@@ -1,0 +1,13 @@
+# Node.js local files
+node_modules/
+npm-debug.log*
+
+# Harness runtime evidence and scanner output
+_check-reports/
+evidence/
+.vibecode-harness/local/
+
+# Local tool and editor state
+.DS_Store
+Thumbs.db
+.vscode/

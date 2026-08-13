@@ -1,0 +1,65 @@
+harness:
+  name: "바이브코드 하네스"
+  version: "0.1.0-design"
+  status: "design-baseline"
+  canonical_policy: "shared/harness-core.yaml"
+  purpose: "Codex와 Claude Code가 동일한 공공 개발·검증 기준을 따르게 한다."
+  trust_policy: "shared/policies/trust-and-integrity.yaml"
+
+tool_support:
+  primary: codex
+  compatible:
+    - claude-code
+  rule: "도구별 어댑터는 공통 정책을 축약·번역할 수 있으나 정책을 변경할 수 없다."
+
+implementation_policy:
+  allowed_languages:
+    - python
+    - javascript
+    - typescript
+  denied_without_exception:
+    - java
+    - go
+    - php
+    - ruby
+    - csharp
+    - rust
+  runtime_rule: "프로젝트의 허용 런타임 버전은 institution-profile.yaml과 harness.lock에 고정한다."
+  package_rule: "새 PyPI·npm 패키지와 버전 변경은 체커 패키지 게이트를 먼저 통과한다."
+
+operating_model:
+  visible_commands:
+    - gg init
+    - gg start
+    - gg design
+    - gg build
+    - gg verify
+    - gg release
+  internal_roles:
+    - intake
+    - architect
+    - builder
+    - verifier
+    - release
+  rule: "L1에서는 한 오케스트레이터가 역할을 순서대로 수행하고, L2 이상에서만 verifier와 release를 분리한다."
+
+control_levels:
+  guided:
+    purpose: "L0/L1 아이디어·시제품의 안내 중심 운영"
+    required: [project_instructions, screen_review, quick_check_when_risky]
+  enforced:
+    purpose: "L2 내부도구의 로컬·Git 검증 운영"
+    required: [harness_lock, gg_verify, git_hooks, package_gate, scenario_test, standard_scan]
+  release_locked:
+    purpose: "L3 이관·배포 후보의 서버측 차단 운영"
+    required: [pull_request, ci_required_checks, full_scan, html_json_reports, human_approval, signed_release_bundle]
+
+evidence:
+  required_for_completion:
+    - runnable_service_or_openable_prototype
+    - approved_screen_design
+    - scenario_test_result
+    - checker_result
+    - harness_verify_result
+  storage_rule: "프로젝트 증적은 소스와 분리된 evidence/ 또는 _workspace/에 저장한다. 실제 개인정보·비밀값·원본 소스·보고서 본문은 기록하지 않는다."
+  redaction_rule: "gg verify는 증적 파일의 일반적인 비밀값·개인정보 패턴을 검사하고, 발견 시 증적을 저장·릴리스하지 않는다."

@@ -1,0 +1,50 @@
+design_discovery:
+  principle: "공무원이 화면을 보고 업무 기능을 확인하도록 하고, 기술 용어 선택을 요구하지 않는다."
+  required_outputs:
+    - feature_brief
+    - screen_map
+    - interactive_or_static_screen_prototype
+    - screen_function_spec
+    - data_and_admin_decision
+
+  question_groups:
+    user_and_scope:
+      ask:
+        - "누가 이 업무 도구를 사용하나요? 우리 부서만, 여러 부서, 시민·도민 중 어디인가요?"
+        - "사용자는 무엇을 입력하고, 무엇을 확인하거나 내려받아야 하나요?"
+    persistence:
+      ask:
+        - "브라우저를 닫은 뒤에도 이 결과를 다시 찾아봐야 하나요?"
+        - "여러 사람이 같은 자료를 보고 수정하거나 이력을 확인해야 하나요?"
+      decisions:
+        no_persistence: "DB 없음. 화면 상태 또는 사용자 PC 파일만 사용한다."
+        local_persistence: "단일 PC·단일 사용이면 로컬 파일 또는 SQLite를 검토한다."
+        shared_persistence: "여러 사용자·공유 조회·반복 업무면 서버 DB와 접근 권한 설계를 시작한다."
+    administration:
+      ask:
+        - "다른 사람의 처리 현황·오류·이력을 한 사람이 확인해야 하나요?"
+        - "사용자마다 볼 수 있는 내용이나 할 수 있는 일이 달라야 하나요?"
+        - "수정·삭제·승인 이력을 남겨야 하나요?"
+      decisions:
+        no_admin: "관리자 화면 없음. 개인 또는 단순 공용 도구로 설계한다."
+        operator_view: "운영 현황·오류·처리 대기 목록이 있는 관리자 화면을 설계한다."
+        role_based_admin: "권한, 감사 로그, 계정·역할 관리가 필요한 관리자 기능을 설계한다."
+    risk:
+      ask:
+        - "개인정보, 민감정보, 인증정보, 외부 API, 파일 업로드가 있나요?"
+        - "결과가 업무 판단·승인·대민 서비스에 영향을 주나요?"
+      decisions:
+        low: "L1 또는 L2 기본 검증 흐름"
+        elevated: "L2 이상, 보안·권한·데이터 설계를 필수화"
+        high: "L3 후보, 사람 검토와 공식 운영 이관 절차로 전환"
+
+  visual_review_gate:
+    rule: "핵심 화면의 시안 또는 실행 가능한 HTML 프로토타입을 사용자가 확인하기 전에는 DB, 관리자, 외부 연계가 포함된 구현을 시작하지 않는다. UI가 없는 자동화는 no_visual_interface 예외와 입출력 예시·CLI 시나리오를 기록해야 한다."
+    minimum_screens:
+      - entry_or_home
+      - primary_task
+      - result_or_saved_output
+      - operator_or_admin_when_required
+    receipt:
+      required_fields: [reviewed_screens, decisions, open_questions, reviewed_at]
+      privacy_rule: "실제 개인정보·민원번호·인증정보·운영 데이터 대신 범주와 비식별 예시만 기록한다."

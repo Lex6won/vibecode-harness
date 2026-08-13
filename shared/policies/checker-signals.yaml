@@ -1,0 +1,22 @@
+checker_signal_policy:
+  version: "1.0"
+  principle: "확인하지 못한 신호를 안전 신호로 바꾸지 않으며, 추론 신호 하나로 자동 차단하지 않는다."
+
+  signal_interpretation:
+    kev_checked_false: "in_kev=false를 KEV 미해당의 증거로 사용하지 않는다."
+    version_exact_false: "단독 자동 차단 사유가 아니다. 버전 범위·잠금 파일·설치 흔적을 함께 검토한다."
+    source_scope: "unknown 직접 의존성과 설치·전이 의존성의 처리 범위를 구분한다."
+    registry_status_not_ok: "기관 레지스트리 allow 판정을 사용하지 않는다."
+    registry_stale: "더 느슨한 판정으로 바꾸기 전에는 최신 확인이 필요하다. 기존 차단은 유지한다."
+    unchecked_or_unparsed: "안전이 아니라 conditional 또는 undetermined로 기록한다."
+
+  machine_verdict_boundary:
+    current_state: "현재 gvskb CLI JSON에는 하네스가 의존할 안정적인 최종 판정 필드가 없다."
+    rule: "하네스는 raw finding, severity, summary.blocked, 종료 코드, HTML 또는 Markdown으로 체커의 최종 판정을 재구성하지 않는다."
+    temporary_behavior: "빈 스캔·프로파일 fallback·필수 의존성 증적 누락은 불완전 검사로 중단한다. 그 밖의 최종 보안 판정은 체커의 공식 기계 계약이 준비될 때까지 사람 검토로 남긴다."
+    future_mapping: "공식 계약이 문서화된 뒤에만 해당 필드의 의미와 종료 코드를 별도 승인 변경으로 연결한다."
+
+  enforcement_mode:
+    default: "MONITOR"
+    rollout: "MONITOR에서 실제 결과·오탐·미탐을 기록한 뒤 WARN, 커버리지와 예외 경로가 확인된 뒤 ENFORCE로 승격한다."
+    rule: "GUIDED/ENFORCED/RELEASE_LOCKED는 프로젝트 성숙도이며 MONITOR/WARN/ENFORCE는 집행 강도다. 둘을 같은 축으로 취급하지 않는다."
