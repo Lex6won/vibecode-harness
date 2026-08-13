@@ -1,82 +1,169 @@
 # 바이브코드 하네스
 
-> GitHub ZIP 기반 Windows 시범 설치와 사용 절차: [docs/18_github_pilot_install.md](./docs/18_github_pilot_install.md)
+> 공무원이 Codex 또는 Claude Code로 업무 도구를 만들 때, 기획·화면 설계·구현·테스트·보안 점검을 같은 순서로 진행하도록 돕는 실행형 개발 도구입니다.
 
-> 공공기관 업무 도구를 Codex와 Claude Code로 만들 때, 같은 개발 언어·실행 환경·검증 절차를 적용하는 실행형 프로젝트 하네스.
+바이브코드 하네스는 다음을 프로젝트에 적용합니다.
 
-## 현재 단계
+- 허용 개발 언어: **Python, JavaScript, TypeScript**
+- 화면이 있는 업무 도구의 설계 확인 절차
+- 새 패키지 사용 전 보안 확인 절차
+- 구현 후 테스트와 `vibecode-checker` 보안 점검
+- Codex와 Claude Code가 읽는 프로젝트 지침, Claude Code 작업 전 Hook, 가능한 경우 Git 커밋 전 점검
 
-이 폴더는 실행형 하네스의 기준선과 개발자용 실행기다. `gg init`, `gg doctor`, `gg start`, `gg design`, `gg build`, `gg verify`, `gg release`를 제공한다. 체커는 이 저장소에서 수정하지 않으며, 체커의 공개 기계 판정 계약이 없다는 한계도 실행 결과에 그대로 표시한다.
+## 3단계로 시작하기
 
-현재 실행기는 Node.js 22 이상과 별도 `gvskb` 설치가 있는 개발자 파일럿용으로도 동작한다. 승인 번들 manifest, Ed25519 서명·파일 해시 검증, 업데이트 하한선, Windows 설치기 차단형 템플릿과 Authenticode 빌드 계약은 구현했다. 다만 Python·Node.js가 없는 일반 공무원 PC에 배포할 실제 EXE에는 기관 코드서명 인증서, 승인 공개키, 내장 Node·Python 런타임, 체커 독립 실행 파일, 새 Windows 계정 실증이 필요하다. 이 전제는 [Windows 구현 기록](./docs/11_windows_release_implementation.md)에서 관리한다.
+### 1. 설치하기
 
-## 핵심 원칙
+현재 설치 스크립트는 **Windows**에서 사용할 수 있습니다. Git을 설치하지 않아도 됩니다.
 
-1. 정책의 원본은 `shared/harness-core.yaml` 하나다.
-2. Codex와 Claude Code는 서로 다른 제품이지만, 언어·런타임·패키지·체커·테스트 기준은 같다.
-3. 기능 구현 언어는 Python, JavaScript, TypeScript만 허용한다.
-4. 공무원은 화면을 먼저 보며 요구사항을 구체화한다. 화면 확인 없이 복잡한 구현으로 바로 가지 않는다.
-5. DB·관리자 기능은 기술 용어가 아니라 업무 질문으로 필요성을 판정한다.
-6. 로컬 지침은 안내이고, 현재 강제 구조는 `gg build`, `gg verify`, 안전한 Git 훅, 선택형 CI 템플릿이다. 기관의 보호 브랜치와 승인 번들 레지스트리는 별도 P0 배포 과제로 남아 있다.
-7. 체커는 외부 보안 판정 엔진이다. 현재 CLI JSON에 안정적인 최종 판정 필드가 없으므로, 하네스는 판정을 재계산하지 않고 최종 승인·차단을 보류한다.
-
-## 목표 구조
-
-```text
-공통 정책·실행기
-├─ Codex 어댑터: AGENTS.md, .codex/vibecode-harness.md
-  ├─ Claude Code 어댑터: CLAUDE.md, .claude/settings.json, Hooks
-  ├─ 설계 우선 흐름: 화면 시안 -> 기능·데이터 결정 -> 구현
-  ├─ 공통 검증: 언어·런타임·패키지·테스트·체커·시나리오
-  └─ 강제 지점: Git 훅 -> PR CI -> 승인 릴리스
-```
-
-## 사용자 명령 목표
-
-| 명령 | 사용자가 하는 일 | 하네스 결과 |
-|---|---|---|
-| `gg init` | 사용할 AI 도구와 프로젝트 유형 선택 | 공통 정책·어댑터·템플릿·Git 훅 설치 |
-| `gg start` | 만들 업무를 일상 언어로 설명 | 질문 결과, 성숙도, 화면 목록, 개발 트랙 |
-| `gg design` | 화면 시안을 보고 확인·수정 | 화면 기능 설계, DB·관리자 필요성 결정 |
-| `gg build` | 승인한 화면·기능을 구현 | 실행 가능한 소스와 변경 기록 |
-| `gg verify` | 구현 결과 확인 | 테스트, 체커, 시나리오, 증적 결과 |
-| `gg release` | 이관·배포 준비 | 최종 보고서, SBOM, 승인 요청 자료 |
-
-## 바로 실행하기
-
-Windows PowerShell에서 하네스 폴더로 이동한 뒤 실행합니다.
+1. 이 저장소에서 **Code > Download ZIP**을 선택합니다.
+2. 받은 ZIP 파일을 모두 풉니다.
+3. 압축을 푼 폴더에서 PowerShell을 열고 아래 명령을 실행합니다.
 
 ```powershell
-.\gg.ps1 init --project C:\work\my-service --tools both --runtime typescript_web --level L2
-.\gg.ps1 doctor --project C:\work\my-service
-.\gg.ps1 start --project C:\work\my-service --brief "반복 업무 현황을 확인하는 내부 도구"
-.\gg.ps1 design --project C:\work\my-service --database no --admin no --external-api no --confirm
-.\gg.ps1 build --project C:\work\my-service
-.\gg.ps1 verify --project C:\work\my-service --run-tests
+Unblock-File .\install.ps1
+.\install.ps1 -InstallPrerequisites -AllowGitHubPilotSource
 ```
 
-`init`은 프로젝트 안에 정책 사본과 잠금 파일, Codex·Claude Code 지침, 증적 폴더를 만들고 Git 저장소라면 기존 훅 설정을 덮어쓰지 않는 범위에서 pre-commit 훅을 설치한다. `build`와 `verify`는 Python·JavaScript·TypeScript 외의 소스 파일, 정책 변조, 잘못된 런타임, 테스트 실패를 차단한다.
+설치 과정에서 필요한 경우 Windows가 Node.js LTS와 Python 3.13 설치를 안내합니다. 설치 창의 승인 여부는 사용자가 직접 결정합니다. 설치가 끝나면 하네스와 보안 체커 상태를 자동으로 확인합니다.
 
-`verify`는 `gvskb` 체커를 호출해 검사 범위와 의존성 증적을 확인한다. 체커를 생략하면 성공하지 않고 `checker_incomplete`로 끝난다. L2 이상에서는 테스트 생략도 차단한다. 테스트는 프로젝트 코드를 실행하므로 사용자가 `--run-tests`로 명시할 때만 실행한다. 체커가 공식 `--fail-on block` 종료 코드를 반환하면 커밋을 차단한다. 현재 체커 CLI JSON에는 공개된 최종 기계 판정 필드가 없으므로, 체커가 정상 실행된 경우에도 자동 배포 승인은 하지 않으며 `gg release`에서 사람 검토를 요구한다.
+설치 파일은 다음 위치에 만들어집니다.
 
-새 패키지는 먼저 `gg package check --ecosystem npm|pypi --name <이름> --version <정확한 버전>`으로 점검한다. 이 명령은 패키지를 설치하지 않는다. 설치 전 검사·예외·잠금파일 변경을 하나의 승인 절차로 묶는 Windows 설치기 기능은 아직 P0 배포 과제다.
+```text
+%LOCALAPPDATA%\Gyeonggi\VibeCodeHarness\github-pilot
+```
 
-## 공무원 설치·사용 안내
+이미 설치한 경우에도 새 ZIP을 다시 받은 뒤 같은 명령을 실행하면, 기존 설치를 백업한 후 새 파일로 교체합니다.
 
-일반 사용자는 시범 포털에서 현재 설치 파일의 승인 상태를 먼저 확인한다. 현재는 개발자 파일럿과 배포 계약 단계이므로, 실제 기관 코드서명 설치 파일이 등록되기 전에는 포털의 다운로드 버튼이 열리지 않는다. Python·Node.js·Git가 없는 PC도 향후 공식 설치 파일 하나로 지원하는 것이 목표이며, 그 전에는 임의의 GitHub ZIP·`main` 소스를 설치본으로 사용하지 않는다.
+### 2. 프로젝트에 적용하기
 
-공식 설치 파일이 등록된 뒤의 기본 순서는 다음과 같다.
+PowerShell에서 아래처럼 하네스 명령 위치를 변수로 지정합니다. 예시는 TypeScript 기반 내부 업무 도구에 Codex와 Claude Code를 함께 적용하는 경우입니다.
 
-1. 포털에서 설치 파일의 버전, SHA-256, 코드서명 확인 상태를 확인하고 설치 파일을 내려받는다.
-2. Windows 설치를 완료한 뒤 `gg doctor --project <프로젝트 폴더>`로 하네스·체커·도구 상태를 확인한다.
-3. Codex 또는 Claude Code를 선택해 프로젝트에서 `gg init`을 한 번 실행한다. 하네스는 선택한 도구의 지침과 안전한 훅을 적용하되, 기존 설정과 Git 훅을 덮어쓰지 않는다.
-4. `gg start`로 업무 목적을 범주 수준에서 정리하고, `gg design --confirm`으로 화면·기능·DB·관리자 필요성을 확인한다. 개인정보·비밀값은 프롬프트나 증적에 입력하지 않는다.
-5. 구현 전 새 패키지는 `gg package check`로 확인하고, 구현 뒤에는 `gg build`, `gg verify --run-tests`, `gg release` 순서로 검증한다.
+```powershell
+$gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
 
-도구별 명령과 예외 처리, 현재 시범 운영 범위는 [하네스 설치·사용 안내](./docs/13_harness_install_and_use.md)를 따른다. GitHub Pages/Vercel 시범 포털과 연말 기관 서버 이관 절차는 [시범 포털·기관 서버 이관 계획](./docs/12_pilot_portal_and_server_handover.md)에 기록한다.
+& $gg init --project C:\work\my-service --tools both --runtime typescript_web --level L2
+& $gg doctor --project C:\work\my-service
+```
 
-## 현재 검증 범위
+`init`은 프로젝트 안에 정책과 실행기를 복사하고, 선택한 AI 도구의 지침을 적용합니다. 이미 있는 `AGENTS.md`, `CLAUDE.md`, Claude 설정, Git Hook은 덮어쓰지 않습니다.
 
-`npm test`, `npm run validate:design`, `npm run test:design`은 실행기 회귀, 정책 위변조, 어댑터 드리프트를 검사한다. 실제 `gvskb` 판정은 테스트에서 모사하되, 사용자 PC에서는 설치된 체커 CLI가 원본 검사와 의존성 감사를 수행한다.
+| 항목 | 선택 값 | 언제 선택하나요 |
+|---|---|---|
+| AI 도구 | `codex`, `claude`, `both` | Codex만, Claude Code만, 또는 둘 다 사용할 때 |
+| 개발 방식 | `python_internal` | 내부 업무 처리·데이터 처리 중심 도구 |
+|  | `node_web` | JavaScript 기반 웹 도구 |
+|  | `typescript_web` | TypeScript 기반 웹 도구, 일반적인 웹 업무 도구에 권장 |
+| 점검 수준 | `L1` | 아이디어 또는 간단한 시제품 |
+|  | `L2` | 내부 업무 도구, 테스트와 보안 점검을 함께 수행 |
+|  | `L3` | 이관·배포 전 더 엄격한 점검이 필요한 경우 |
 
-상세 설계는 [실행형 하네스 설계](./docs/01_execution_harness_design.md), [화면 중심 설계 흐름](./docs/02_visual_first_design.md), [도구별 어댑터·강제 모델](./docs/03_adapter_and_enforcement.md), [적대적 설계 검증 기록](./docs/04_adversarial_design_review.md)을 따른다. 일반 공무원용 Windows 설치·강제 적용·업데이트의 구현 기준은 [Windows 구현 기준선](./docs/09_windows_harness_implementation_baseline.md)으로 확정한다. 승인 번들·키 교체·정책 위변조 방지는 `shared/policies/trust-and-integrity.yaml`에 정의한다.
+### 3. 순서대로 개발하기
+
+```powershell
+# 1) 만들 업무를 개인정보 없이 짧게 설명합니다.
+& $gg start --project C:\work\my-service --brief "민원 처리 현황을 확인하는 내부 웹 도구"
+
+# 2) 화면, DB, 관리자 기능이 필요한지 결정합니다.
+& $gg design --project C:\work\my-service --database no --admin no --external-api no --confirm
+
+# 3) 새 패키지를 쓰기 전에 확인합니다.
+& $gg package check --project C:\work\my-service --ecosystem npm --name example-package --version 1.2.3
+
+# 4) 구현한 뒤 정책과 실행 환경을 확인합니다.
+& $gg build --project C:\work\my-service
+
+# 5) 테스트와 보안 점검을 실행합니다.
+& $gg verify --project C:\work\my-service --run-tests
+
+# 6) 이관 또는 배포 전에 검토 자료를 만듭니다.
+& $gg release --project C:\work\my-service
+```
+
+## 하네스가 하는 일
+
+### 기획과 설계
+
+`gg start`는 업무 목적을 기록하고, `gg design`은 화면·기능·DB·관리자 기능이 필요한지 확인하는 설계 파일을 만듭니다. 화면이 있는 도구는 핵심 화면 시안을 확인한 뒤 구현 단계로 넘어갑니다.
+
+업무 설명에는 실명, 연락처, 주민등록번호, 비밀번호, API 키, 토큰을 입력하지 마세요. 하네스는 흔한 개인정보·비밀값 형태를 발견하면 해당 설명의 저장을 중단합니다.
+
+### 개발 언어와 환경
+
+프로젝트에 적용한 뒤 `gg build`와 `gg verify`는 Python, JavaScript, TypeScript 외의 소스 파일과 허용되지 않은 실행 명령을 확인합니다. 정책 파일이나 하네스 실행 파일이 바뀐 경우에도 검증을 멈추고 확인을 요구합니다.
+
+### AI 코딩 도구 연결
+
+| 도구 | 하네스 적용 방식 |
+|---|---|
+| Codex | 프로젝트의 `AGENTS.md`와 `.codex/vibecode-harness.md`를 적용합니다. |
+| Claude Code | 프로젝트의 `CLAUDE.md`와 작업 전 Hook을 적용합니다. 승인되지 않은 언어 파일 생성, 직접 패키지 설치 등은 Hook이 막습니다. |
+| ChatGPT/Codex 데스크톱, Claude Desktop | 현재 하네스가 전용 설정을 자동으로 적용하지 않습니다. 보안 체커 MCP 연결은 체커 README의 도구별 안내를 따릅니다. |
+
+Git 저장소이고 기존 Hook 설정과 충돌하지 않는 경우에는 커밋 전에 `gg verify --hook`을 실행하는 Hook도 적용합니다. 기존 Hook이 있으면 덮어쓰지 않고 수동 확인이 필요하다고 알려줍니다.
+
+### 패키지와 보안 점검
+
+새 npm 또는 PyPI 패키지를 사용하기 전에는 `gg package check`로 이름과 정확한 버전을 확인합니다. 이 명령은 패키지를 설치하지 않습니다.
+
+`gg verify --run-tests`는 다음을 순서대로 확인합니다.
+
+1. 허용 언어, 런타임, 정책 파일, 설계 확인 기록
+2. 프로젝트의 테스트 명령
+3. `vibecode-checker`의 코드·의존성 점검
+
+L2와 L3에서는 테스트를 생략할 수 없습니다. 체커가 없거나 검사 범위·의존성 점검이 불완전하면 성공으로 처리하지 않고 `incomplete`로 표시합니다. 체커가 차단 종료 코드를 반환하면 검증은 중단됩니다.
+
+## 결과 읽는 법
+
+| 결과 | 뜻 | 다음 행동 |
+|---|---|---|
+| `ready` | 언어·런타임·정책·설계 조건을 통과했습니다. | 구현 또는 다음 점검으로 진행합니다. |
+| `blocked` | 정책, 테스트 또는 체커 차단 조건에 문제가 있습니다. | 표시된 문제를 고친 뒤 다시 실행합니다. |
+| `incomplete` | 체커, 검사 대상, 의존성 점검 등 일부 확인을 마치지 못했습니다. | 누락된 항목을 확인한 뒤 다시 실행합니다. |
+| `review_required` | 자동 점검은 끝났지만 이관·배포 전 사람 검토가 필요합니다. | 최신 보안 점검 결과와 미해결 항목을 확인합니다. |
+
+하네스 증적은 프로젝트의 `evidence/` 폴더에 저장됩니다. 체커 보고서를 별도로 만들려면 다음처럼 실행합니다.
+
+```powershell
+gvskb scan C:\work\my-service --check-deps -o 보안점검.md
+```
+
+체커는 `보안점검.md`와 인쇄용 `보안점검.html`을 함께 만듭니다. 보고서에는 발견 항목, 이유, 수정 방향, 의존성 점검 결과가 한국어로 정리됩니다.
+
+## 개인정보와 파일 처리
+
+- 하네스가 만드는 기획·설계·검증 증적과 체커 보고서는 사용자의 프로젝트 폴더 또는 사용자가 지정한 PC 위치에 저장됩니다.
+- 하네스는 프로젝트 원본 소스나 보고서 본문을 자체 서버로 전송하지 않습니다.
+- 온라인 의존성 점검을 사용할 때는 체커가 취약점 정보를 확인하기 위해 **패키지 이름과 버전**을 조회할 수 있습니다. 원본 소스와 보고서 본문은 전송하지 않습니다.
+- Codex, Claude Code 등 AI 도구에 직접 입력하는 내용은 각 도구의 처리 정책을 따릅니다. 개인정보, 비밀번호, 인증정보, 실제 API 키를 입력하지 마세요.
+
+## 자주 묻는 문제
+
+### `gvskb` 또는 체커를 찾을 수 없다고 나옵니다
+
+하네스 설치 폴더에서 설치 명령을 다시 실행합니다.
+
+```powershell
+.\install.ps1 -InstallPrerequisites -AllowGitHubPilotSource
+```
+
+그 뒤 프로젝트에서 `& $gg doctor --project C:\work\my-service`를 실행해 상태를 확인합니다.
+
+### PowerShell이 `install.ps1` 실행을 막습니다
+
+다운로드한 파일의 차단 표시를 해제한 뒤 다시 실행합니다.
+
+```powershell
+Unblock-File .\install.ps1
+```
+
+### 테스트가 실행되지 않습니다
+
+L2 이상에서는 프로젝트에 테스트 명령이 필요합니다. `package.json`의 `scripts.test` 또는 Python 프로젝트의 테스트 환경을 먼저 준비한 뒤 `gg verify --run-tests`를 다시 실행하세요.
+
+## 더 알아보기
+
+- 보안 체커: [Lex6won/vibecode-checker](https://github.com/Lex6won/vibecode-checker)
+- Windows 설치 상세 안내: [docs/18_github_pilot_install.md](./docs/18_github_pilot_install.md)
+- 체커의 MCP 연결과 보고서 읽는 법: 체커 저장소 README
