@@ -1,6 +1,6 @@
 # 체커 연계 구조 적대적 검증
 
-> 상태: 발견 기록. §5의 CLI 호출 초안과 §6의 우선순위는 실제 CLI와 충돌하므로 현재 계약으로 사용하지 않는다. 유효한 결론과 현재 계약은 `docs/07_integrated_execution_contract.md`를 따른다.
+> 상태: 발견 기록. §5의 CLI 호출 초안과 §6의 우선순위는 실제 CLI와 충돌하므로 현재 계약으로 사용하지 않는다. 유효한 체커 연계 계약은 `docs/07_integrated_execution_contract.md`, Windows 설치·포털·개인정보 기준은 `docs/09_windows_harness_implementation_baseline.md`를 따른다.
 
 검증일: 2026-08-12
 대상: `바이브코드 하네스` 설계 기준선 전체 (README, docs/01~04, shared/*, adapters/*, scripts/*)

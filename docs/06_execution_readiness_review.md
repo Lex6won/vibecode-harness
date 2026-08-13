@@ -1,6 +1,6 @@
 # 실행 준비도 검토 — "실행형 하네스"로 쓸 수 있는가
 
-> 상태: 실측 검토 기록. 체커 CLI 계약과 우선순위의 현재 기준은 `docs/07_integrated_execution_contract.md`다.
+> 상태: 2026-08-12 시점의 실측 검토 기록. 당시의 "명령 0개" 등 구현 현황은 이후 실행기 추가로 더 이상 현재 상태가 아니다. 체커 CLI 계약은 `docs/07_integrated_execution_contract.md`, 일반 공무원 Windows 설치·포털·개인정보 기준과 현 구현 우선순위는 `docs/09_windows_harness_implementation_baseline.md`를 따른다.
 
 검토일: 2026-08-12
 대상: `바이브코드 하네스` 전체 (파일 13개)
@@ -223,7 +223,7 @@ exit_40_checker_block: "decision == block 또는 severity in [critical, high] �
 | 5 | **증적 JSON 스키마 없음** | `work-status.json`, `visual_review_receipt`가 산문으로만 존재. **Codex와 Claude가 같은 파일을 다른 형태로 쓴다.** 하네스의 존재 이유가 여기서 깨진다 | `shared/templates/*.schema.json` 3종 |
 | 6 | **테스트·픽스처 0개** | `docs/04`의 재검증 계획 5종이 계획으로만 있다. 참고로 체커는 388개 테스트를 갖고 있다 | `evals/*.json` 4종 |
 | 7 | **CI 워크플로 파일 없음** | "CI가 최종 차단"이 설계 전체의 신뢰 근거인데 **그 파일이 없다** | `.github/workflows/validate-harness.yml` |
-| 8 | **`gg` 진입점 없음** | `scripts/README.md`가 "gg.ps1 또는 코드서명 로컬 에이전트"라고만 적음 | `shared/scripts/gg-validate.ps1` 407줄 등 |
+| 8 | **당시 `gg` 진입점 없음** | 당시 `scripts/README.md`가 "gg.ps1 또는 코드서명 로컬 에이전트"라고만 적음 | 이후 `bin/gg.mjs`, `gg.ps1`이 추가됨. 현 설치·배포 기준은 `docs/09`를 따름 |
 | 9 | **레지스트리 연계 없음** | 사용자 요구는 "체커 **와 레지스트리와** 연계"인데 레지스트리 관련 정책이 전무. 체커에는 `--registry-bundle` 옵션이 실재한다 | `shared/references/trusted-registry-integration.yaml` |
 | 10 | **인텔 신호 해석 규칙 유실** | `kev_checked=false`를 KEV 미매치로 읽으면 **거짓 안심**, `version_exact=false`로 차단하면 **과잉 차단**. 둘 다 도구를 못 쓰게 만든다 | 구 `AGENTS.md`에 원문 존재 |
 | 11 | **집행 모드 축 소실** | GUIDED/ENFORCED/RELEASE_LOCKED는 **성숙도 축**이지 집행 강도 축이 아니다. "L2인데 롤아웃이 MONITOR면 차단인가 경고인가"에 답이 없다 | `harness-enforcement-contract.yaml` |

@@ -1,6 +1,8 @@
 # 통합 실행 계약
 
-상태: 현재 기준선. `docs/05`와 `docs/06`은 발견과 실측을 남긴 검토 기록이다. 이 문서와 `shared/policies/checker-contract.yaml`이 새 하네스의 구현 기준이다.
+상태: 체커 연계 기준선. `docs/05`와 `docs/06`은 발견과 실측을 남긴 검토 기록이다. Windows 설치·포털·개인정보 경계는 `docs/09_windows_harness_implementation_baseline.md`가 우선한다.
+
+중요한 현재 한계: 현 실행기의 `gg verify`는 프로젝트에 선언된 `npm test` 또는 `pytest`를 현재 사용자 권한으로 실행한다. 이는 미검증 소스에 안전하지 않다. 자동 Git 훅과 기관 배포에는 사용하지 않으며, 승인된 명령·사용자 확인·격리 실행으로 바꾸기 전까지 P0 미해결 항목으로 취급한다.
 
 ## 1. 결정
 
@@ -49,7 +51,7 @@ gg verify
 
 1. 구조 검증기와 변이 테스트로 정책 드리프트를 막는다.
 2. 기존 하네스 자산을 파일 단위로 검토·이관한다. 출처, SHA-256, 수정 이유, 검증 결과를 남긴다.
-3. `gg init`, `gg doctor`, `gg verify` 최소 실행기를 구현한다. `gg verify`는 임의 셸 명령을 실행하지 않는다.
+3. `gg init`, `gg doctor`, `gg verify` 최소 실행기를 구현한다. `gg verify`의 테스트 실행은 승인된 명령·사용자 확인·격리 환경으로 제한하며, 임의 프로젝트 명령을 자동 Git 훅에서 실행하지 않는다.
 4. Git 훅과 CI가 같은 `gg verify`를 깨끗한 환경에서 재실행한다.
 5. 체커 공개 계약이 생길 때까지 최종 체커 판정은 `checker_review_required`로 보류한다.
 
