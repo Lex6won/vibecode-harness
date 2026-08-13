@@ -11,3 +11,12 @@ evidence/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Release signing secrets and generated distribution artifacts
+*.pem
+*.key
+*.pfx
+*.p12
+installer/private/
+dist/
+release/

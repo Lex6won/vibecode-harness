@@ -5,6 +5,7 @@ import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
 import { basename, dirname, extname, join, resolve, relative, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { installationState, verifyBundle } from "../lib/release-integrity.mjs";
 
 const EXIT = Object.freeze({
   OK: 0,
@@ -25,6 +26,10 @@ const ROOT_PACKAGE_POLICY_PATH = join(HARNESS_ROOT, "shared", "references", "pac
 const CODEX_TEMPLATE_PATH = join(HARNESS_ROOT, "adapters", "codex", "AGENTS.template.md");
 const CLAUDE_TEMPLATE_PATH = join(HARNESS_ROOT, "adapters", "claude-code", "CLAUDE.template.md");
 const CI_TEMPLATE_PATH = join(HARNESS_ROOT, "templates", "vibecode-harness-ci.yml");
+const TRUST_PATH = join(HARNESS_ROOT, "shared", "trust", "approved-signers.json");
+const RELEASE_INTEGRITY_PATH = join(HARNESS_ROOT, "lib", "release-integrity.mjs");
+const BUNDLED_CHECKER_PATH = join(HARNESS_ROOT, "checker", process.platform === "win32" ? "gvskb.exe" : "gvskb");
+const BUNDLED_PYTHON_PATH = join(HARNESS_ROOT, "runtime", process.platform === "win32" ? "python.exe" : "python");
 const BLOCKED_EXTENSIONS = new Map([
   [".java", "Java"], [".go", "Go"], [".php", "PHP"], [".rb", "Ruby"],
   [".cs", "C#"], [".rs", "Rust"]
@@ -65,6 +70,8 @@ function usage() {
   node bin/gg.mjs start --project <폴더> --brief <업무 설명>
   node bin/gg.mjs design --project <폴더> [--database yes|no] [--admin yes|no] [--external-api yes|no] [--confirm]
   node bin/gg.mjs package check --project <폴더> --ecosystem npm|pypi --name <패키지> --version <버전>
+  node bin/gg.mjs bundle verify --bundle <승인 번들 폴더> [--trust <기관 공개키 목록>]
+  node bin/gg.mjs bundle status --installed <설치 폴더> [--candidate <포털에서 받은 승인 번들 폴더>] [--trust <기관 공개키 목록>]
   node bin/gg.mjs build --project <폴더>
   node bin/gg.mjs verify --project <폴더> [--run-tests] [--hook] [--skip-checker] [--no-tests]
   node bin/gg.mjs release --project <폴더>
@@ -111,6 +118,29 @@ async function commandAvailable(command, env = process.env) {
   const probe = process.platform === "win32" ? ["where.exe", [command]] : ["which", [command]];
   const result = await run(probe[0], probe[1], { env });
   return result.code === 0;
+}
+
+async function approvedCommand({ bundledPath, fallback, env = process.env }) {
+  if (await pathExists(join(HARNESS_ROOT, "bundle.manifest.json"))) {
+    return (await pathExists(bundledPath)) ? { command: bundledPath, source: "bundled" } : null;
+  }
+  if (await pathExists(bundledPath)) return { command: bundledPath, source: "bundled" };
+  if (await commandAvailable(fallback, env)) return { command: fallback, source: "system" };
+  return null;
+}
+
+async function checkerCommand(env = process.env) {
+  return approvedCommand({ bundledPath: BUNDLED_CHECKER_PATH, fallback: "gvskb", env });
+}
+
+async function pythonCommand(env = process.env) {
+  return approvedCommand({ bundledPath: BUNDLED_PYTHON_PATH, fallback: "python", env });
+}
+
+async function runningBundleStatus() {
+  const manifest = join(HARNESS_ROOT, "bundle.manifest.json");
+  if (!(await pathExists(manifest))) return { status: "developer_install" };
+  return verifyBundle({ bundleDir: HARNESS_ROOT, trustPath: TRUST_PATH });
 }
 
 async function getLock(project) {
@@ -228,6 +258,9 @@ async function policyCheck(project, lock) {
   const localRunner = join(project, ".vibecode-harness", "bin", "gg.mjs");
   if (!(await pathExists(localRunner))) failures.push("프로젝트 실행기 사본이 없습니다. 승인된 하네스를 다시 적용하세요.");
   else if (lock.runner_sha256 && (await sha256(localRunner)) !== lock.runner_sha256) failures.push("프로젝트 실행기 사본이 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
+  const localIntegrity = join(project, ".vibecode-harness", "lib", "release-integrity.mjs");
+  if (!(await pathExists(localIntegrity))) failures.push("프로젝트 번들 무결성 검증 모듈이 없습니다. 승인된 하네스를 다시 적용하세요.");
+  else if (lock.release_integrity_sha256 && (await sha256(localIntegrity)) !== lock.release_integrity_sha256) failures.push("프로젝트 번들 무결성 검증 모듈이 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
   const localHook = join(project, ".vibecode-harness", "bin", "claude-pre-tool.mjs");
   if (lock.tools?.includes("claude-code")) {
     if (!(await pathExists(localHook))) failures.push("Claude Code 훅 사본이 없습니다. 승인된 하네스를 다시 적용하세요.");
@@ -289,7 +322,7 @@ async function runtimeCheck(lock) {
     const major = Number((result.stdout.match(/v(\d+)/) || [])[1]);
     if (!Number.isInteger(major) || major < 22) checks.push(`Node.js 22 이상이 필요합니다. 현재: ${result.stdout.trim() || "확인 불가"}`);
   }
-  if (lock.runtime_profile === "python_internal" && !(await commandAvailable("python"))) checks.push("Python 트랙에는 승인된 Python 런타임이 필요합니다.");
+  if (lock.runtime_profile === "python_internal" && !(await pythonCommand())) checks.push("Python 트랙에는 승인된 Python 런타임이 필요합니다.");
   return checks;
 }
 
@@ -334,7 +367,9 @@ async function runProjectTests(project, lock, options) {
       if (!options["run-tests"]) {
         return { status: "confirmation_required", command: "python -m pytest -q", reason: "테스트 실행은 프로젝트 코드를 실행합니다. 내용을 확인한 뒤 --run-tests로 명시 실행하세요." };
       }
-      const result = await run("python", ["-m", "pytest", "-q"], { cwd: project });
+      const python = await pythonCommand();
+      if (!python) return { status: "blocked", reason: "Python 트랙에 필요한 Python 런타임을 찾을 수 없습니다." };
+      const result = await run(python.command, ["-m", "pytest", "-q"], { cwd: project });
       return { status: result.code === 0 ? "passed" : "failed", command: "python -m pytest -q", code: result.code, stderr: result.stderr.slice(-2000) };
     }
   }
@@ -342,7 +377,10 @@ async function runProjectTests(project, lock, options) {
 }
 
 async function runChecker(project, lock, env = process.env) {
-  if (!(await commandAvailable("gvskb", env))) return { status: "incomplete", reason: "vibecode-checker(gvskb)를 찾을 수 없습니다." };
+  const bundle = await runningBundleStatus();
+  if (!["developer_install", "verified"].includes(bundle.status)) return { status: "incomplete", reason: "설치된 승인 번들의 무결성을 확인할 수 없습니다. 공식 복구 설치 후 다시 시도하세요.", bundle };
+  const checker = await checkerCommand(env);
+  if (!checker) return { status: "incomplete", reason: "vibecode-checker(gvskb)를 찾을 수 없습니다." };
   const sourceFiles = (await listFiles(project)).filter((file) => SOURCE_EXTENSIONS.has(extname(file).toLowerCase()));
   if (sourceFiles.length === 0) return { status: "incomplete", reason: "지원되는 구현 소스 파일이 없습니다. 지침·문서 파일만으로는 점검을 통과할 수 없습니다." };
   const profileMap = {
@@ -352,7 +390,7 @@ async function runChecker(project, lock, env = process.env) {
   };
   const profile = profileMap[lock.runtime_profile] || "public-default-strict";
   const args = ["scan", project, "--format", "json", "--stdout", "--profile", profile, "--check-deps", "--include-installed", "--env", lock.level === "L3" ? "E2" : "E1", "--fail-on", "block"];
-  const result = await run("gvskb", args, { cwd: project, env });
+  const result = await run(checker.command, args, { cwd: project, env });
   if (result.code === null) return { status: "incomplete", reason: "체커를 실행할 수 없습니다.", stderr: result.stderr.slice(-2000) };
   let report;
   try { report = JSON.parse(result.stdout); }
@@ -372,7 +410,7 @@ async function runChecker(project, lock, env = process.env) {
   if (result.code !== 0) return { status: "blocked", reason: "체커가 공식 차단 종료 코드를 반환했습니다.", exit_code: result.code, scannedFiles: scannedFiles.length, stderr: result.stderr.slice(-2000) };
   const reportPath = await writeReceipt(project, "checker-evidence", {
     kind: "checker_evidence",
-    checker: "gvskb",
+    checker: checker.source === "bundled" ? "bundled_gvskb" : "system_gvskb",
     profile: report.profile,
     scanned_file_count: scannedFiles.length,
     finding_count: report.summary?.finding_count ?? null,
@@ -408,13 +446,21 @@ async function packageCommand(options) {
     process.exitCode = EXIT.PACKAGE;
     return;
   }
-  if (!(await commandAvailable("gvskb"))) {
+  const bundle = await runningBundleStatus();
+  if (!["developer_install", "verified"].includes(bundle.status)) {
+    const receipt = await writeReceipt(project, "package-check", { kind: "package_check", status: "incomplete", reason: "설치된 승인 번들의 무결성을 확인할 수 없습니다.", bundle });
+    print({ status: "incomplete", reason: "설치된 승인 번들의 무결성을 확인할 수 없습니다. 공식 복구 설치 후 다시 시도하세요.", receipt });
+    process.exitCode = EXIT.CHECKER_INCOMPLETE;
+    return;
+  }
+  const checker = await checkerCommand();
+  if (!checker) {
     const receipt = await writeReceipt(project, "package-check", { kind: "package_check", status: "incomplete", reason: "vibecode-checker를 찾을 수 없습니다.", name, version, ecosystem });
     print({ status: "incomplete", reason: "체커가 없어 패키지 설치를 승인할 수 없습니다.", receipt });
     process.exitCode = EXIT.CHECKER_INCOMPLETE;
     return;
   }
-  const result = await run("gvskb", ["check-package", name, "--ecosystem", ecosystem, "--version", version, "--env", lock.level === "L3" ? "E2" : "E1"], { cwd: project });
+  const result = await run(checker.command, ["check-package", name, "--ecosystem", ecosystem, "--version", version, "--env", lock.level === "L3" ? "E2" : "E1"], { cwd: project });
   let decision;
   try { decision = JSON.parse(result.stdout); }
   catch {
@@ -426,11 +472,35 @@ async function packageCommand(options) {
   const blocked = result.code !== 0 || ["malicious", "registry_rejected", "not_found"].includes(decision.verdict) || Boolean(decision.in_kev);
   const status = blocked ? "blocked" : decision.requires_review ? "review_required" : "passed";
   const receipt = await writeReceipt(project, "package-check", {
-    kind: "package_check", status, name, version, ecosystem, checker: "gvskb", checker_exit_code: result.code,
+    kind: "package_check", status, name, version, ecosystem, checker: checker.source === "bundled" ? "bundled_gvskb" : "system_gvskb", checker_exit_code: result.code,
     verdict: decision.verdict, severity: decision.verdict_severity, requires_review: Boolean(decision.requires_review), in_kev: Boolean(decision.in_kev), checked: Boolean(decision.checked)
   });
   print({ status, name, version, ecosystem, verdict: decision.verdict, requires_review: Boolean(decision.requires_review), receipt, next: blocked ? "대체 패키지 또는 승인된 예외 검토를 선택하세요." : "패키지 설치는 승인된 설치 절차에서 진행하세요." });
   if (blocked) process.exitCode = EXIT.PACKAGE;
+}
+
+async function bundleCommand(options) {
+  const action = options._[0];
+  const trustPath = resolve(options.trust || TRUST_PATH);
+  if (action === "verify") {
+    if (!options.bundle || options.bundle === true) throw new Error("bundle verify에는 --bundle <승인 번들 폴더>가 필요합니다.");
+    const result = await verifyBundle({ bundleDir: resolve(options.bundle), trustPath });
+    print(result);
+    if (result.status !== "verified") process.exitCode = EXIT.CHECKER_INCOMPLETE;
+    return;
+  }
+  if (action === "status") {
+    if (!options.installed || options.installed === true) throw new Error("bundle status에는 --installed <설치 폴더>가 필요합니다.");
+    const result = await installationState({
+      installedDir: resolve(options.installed),
+      candidateDir: options.candidate && options.candidate !== true ? resolve(options.candidate) : null,
+      trustPath
+    });
+    print(result);
+    if (!["current", "current_unknown"].includes(result.state)) process.exitCode = EXIT.CHECKER_INCOMPLETE;
+    return;
+  }
+  throw new Error("지원하는 bundle 명령은 verify 또는 status입니다.");
 }
 
 async function initCommand(options) {
@@ -447,11 +517,13 @@ async function initCommand(options) {
   if (await pathExists(lockPath)) throw new Error("이미 초기화된 프로젝트입니다. 기존 lock을 덮어쓰지 않습니다.");
   await mkdir(join(harnessDir, "policy"), { recursive: true });
   await mkdir(join(harnessDir, "bin"), { recursive: true });
+  await mkdir(join(harnessDir, "lib"), { recursive: true });
   await cp(POLICY_PATH, join(harnessDir, "policy", "harness-core.yaml"));
   await cp(INSTITUTION_PROFILE_PATH, join(harnessDir, "policy", "institution-profile.yaml"));
   await cp(ROOT_PACKAGE_POLICY_PATH, join(harnessDir, "policy", "package-policy.json"));
   await cp(join(HARNESS_ROOT, "bin", "gg.mjs"), join(harnessDir, "bin", "gg.mjs"));
   await cp(join(HARNESS_ROOT, "bin", "claude-pre-tool.mjs"), join(harnessDir, "bin", "claude-pre-tool.mjs"));
+  await cp(RELEASE_INTEGRITY_PATH, join(harnessDir, "lib", "release-integrity.mjs"));
   const lock = {
     schema_version: 1,
     harness_version: "0.1.0",
@@ -465,6 +537,7 @@ async function initCommand(options) {
     institution_profile_sha256: await sha256(join(harnessDir, "policy", "institution-profile.yaml")),
     package_policy_sha256: await sha256(join(harnessDir, "policy", "package-policy.json")),
     runner_sha256: await sha256(join(harnessDir, "bin", "gg.mjs")),
+    release_integrity_sha256: await sha256(join(harnessDir, "lib", "release-integrity.mjs")),
     claude_hook_sha256: await sha256(join(harnessDir, "bin", "claude-pre-tool.mjs")),
     checker_machine_verdict: "pending_upstream_machine_verdict"
   };
@@ -547,7 +620,8 @@ async function doctorCommand(options) {
   let lock = null;
   let lockError = null;
   try { lock = await getLock(project); } catch (error) { lockError = error.message; }
-  const [git, gvskb] = await Promise.all([commandAvailable("git"), commandAvailable("gvskb")]);
+  const [git, checker] = await Promise.all([commandAvailable("git"), checkerCommand()]);
+  const bundle = await runningBundleStatus();
   const nodeVersion = process.version;
   const adapters = {};
   if (lock?.value.tools.includes("codex")) {
@@ -575,14 +649,15 @@ async function doctorCommand(options) {
     node: nodeVersion,
     git,
     git_hook: gitHook,
-    checker: gvskb ? "available" : "not_installed",
+    checker: checker ? { status: "available", source: checker.source } : { status: "not_installed" },
+    bundle,
     adapters,
     harness: lock?.value ?? null,
-    message: lockError || (gvskb ? "하네스와 체커 실행 경로를 확인했습니다." : "체커가 없어 표준 보안 점검은 실행할 수 없습니다.")
+    message: lockError || (checker ? "하네스와 체커 실행 경로를 확인했습니다." : "체커가 없어 표준 보안 점검은 실행할 수 없습니다.")
   };
   if (lock) result.policy_failures = await policyCheck(project, lock.value);
   print(result);
-  if (!lock || !gvskb) process.exitCode = EXIT.CHECKER_INCOMPLETE;
+  if (!lock || !checker) process.exitCode = EXIT.CHECKER_INCOMPLETE;
 }
 
 async function startCommand(options) {
@@ -719,6 +794,7 @@ async function main() {
     else if (command === "start") await startCommand(options);
     else if (command === "design") await designCommand(options);
     else if (command === "package") await packageCommand(options);
+    else if (command === "bundle") await bundleCommand(options);
     else if (command === "build") await buildCommand(options);
     else if (command === "verify") await verifyCommand(options);
     else if (command === "release") await releaseCommand(options);
