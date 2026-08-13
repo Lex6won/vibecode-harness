@@ -1,5 +1,7 @@
 # 바이브코드 하네스
 
+> GitHub ZIP 기반 Windows 시범 설치와 사용 절차: [docs/18_github_pilot_install.md](./docs/18_github_pilot_install.md)
+
 > 공공기관 업무 도구를 Codex와 Claude Code로 만들 때, 같은 개발 언어·실행 환경·검증 절차를 적용하는 실행형 프로젝트 하네스.
 
 ## 현재 단계
