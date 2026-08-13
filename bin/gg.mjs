@@ -129,12 +129,67 @@ async function approvedCommand({ bundledPath, fallback, env = process.env }) {
   return null;
 }
 
+async function firstExisting(paths) {
+  for (const candidate of paths.filter(Boolean)) {
+    if (await pathExists(candidate)) return candidate;
+  }
+  return null;
+}
+
+async function pythonInstallationExecutable(filename, env = process.env) {
+  if (process.platform !== "win32") return null;
+  const roots = [
+    env.LOCALAPPDATA && join(env.LOCALAPPDATA, "Programs", "Python"),
+    env.ProgramFiles && join(env.ProgramFiles, "Python"),
+    env["ProgramFiles(x86)"] && join(env["ProgramFiles(x86)"], "Python")
+  ].filter(Boolean);
+  const candidates = [];
+  for (const root of roots) {
+    try {
+      const entries = await readdir(root, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || !/^Python\d+(?:-\d+)?$/i.test(entry.name)) continue;
+        candidates.push(filename === "python.exe"
+          ? join(root, entry.name, filename)
+          : join(root, entry.name, "Scripts", filename));
+      }
+    } catch { /* A Python installation directory is optional. */ }
+  }
+  return firstExisting(candidates);
+}
+
+async function perUserPythonScript(filename, env = process.env) {
+  if (process.platform !== "win32" || !env.APPDATA) return null;
+  const root = join(env.APPDATA, "Python");
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    const candidates = entries
+      .filter((entry) => entry.isDirectory() && /^Python\d+(?:-\d+)?$/i.test(entry.name))
+      .map((entry) => join(root, entry.name, "Scripts", filename));
+    return firstExisting(candidates);
+  } catch {
+    return null;
+  }
+}
+
 async function checkerCommand(env = process.env) {
-  return approvedCommand({ bundledPath: BUNDLED_CHECKER_PATH, fallback: "gvskb", env });
+  if (await pathExists(join(HARNESS_ROOT, "bundle.manifest.json"))) {
+    return (await pathExists(BUNDLED_CHECKER_PATH)) ? { command: BUNDLED_CHECKER_PATH, source: "bundled" } : null;
+  }
+  if (await pathExists(BUNDLED_CHECKER_PATH)) return { command: BUNDLED_CHECKER_PATH, source: "bundled" };
+  const userScript = await perUserPythonScript("gvskb.exe", env) || await pythonInstallationExecutable("gvskb.exe", env);
+  if (userScript) return { command: userScript, source: "python_user_scripts" };
+  return (await commandAvailable("gvskb", env)) ? { command: "gvskb", source: "system" } : null;
 }
 
 async function pythonCommand(env = process.env) {
-  return approvedCommand({ bundledPath: BUNDLED_PYTHON_PATH, fallback: "python", env });
+  if (await pathExists(join(HARNESS_ROOT, "bundle.manifest.json"))) {
+    return (await pathExists(BUNDLED_PYTHON_PATH)) ? { command: BUNDLED_PYTHON_PATH, source: "bundled" } : null;
+  }
+  if (await pathExists(BUNDLED_PYTHON_PATH)) return { command: BUNDLED_PYTHON_PATH, source: "bundled" };
+  const installedPython = await pythonInstallationExecutable("python.exe", env);
+  if (installedPython) return { command: installedPython, source: "python_installation" };
+  return (await commandAvailable("python", env)) ? { command: "python", source: "system" } : null;
 }
 
 async function runningBundleStatus() {

@@ -32,11 +32,13 @@ function runCommand(command, args, cwd) {
 
 async function fakeCheckerEnvironment(report = { scanned_files: ["app.ts"], skipped_files: [], profile: "web-civil-service", summary: { finding_count: 0 } }) {
   const directory = await mkdtemp(join(tmpdir(), "vibecode-harness-fake-gvskb-"));
-  await copyFile(process.execPath, join(directory, "gvskb.exe"));
+  const scripts = join(directory, "Python", "Python313", "Scripts");
+  await mkdir(scripts, { recursive: true });
+  await copyFile(process.execPath, join(scripts, "gvskb.exe"));
   return {
     report,
     directory,
-    env: { ...process.env, PATH: `${directory};${process.env.PATH}`, GG_TEST_CHECKER_REPORT: JSON.stringify(report) }
+    env: { ...process.env, APPDATA: directory, GG_TEST_CHECKER_REPORT: JSON.stringify(report) }
   };
 }
 
