@@ -59,6 +59,20 @@ Windows PowerShell에서 하네스 폴더로 이동한 뒤 실행합니다.
 
 새 패키지는 먼저 `gg package check --ecosystem npm|pypi --name <이름> --version <정확한 버전>`으로 점검한다. 이 명령은 패키지를 설치하지 않는다. 설치 전 검사·예외·잠금파일 변경을 하나의 승인 절차로 묶는 Windows 설치기 기능은 아직 P0 배포 과제다.
 
+## 공무원 설치·사용 안내
+
+일반 사용자는 시범 포털에서 현재 설치 파일의 승인 상태를 먼저 확인한다. 현재는 개발자 파일럿과 배포 계약 단계이므로, 실제 기관 코드서명 설치 파일이 등록되기 전에는 포털의 다운로드 버튼이 열리지 않는다. Python·Node.js·Git가 없는 PC도 향후 공식 설치 파일 하나로 지원하는 것이 목표이며, 그 전에는 임의의 GitHub ZIP·`main` 소스를 설치본으로 사용하지 않는다.
+
+공식 설치 파일이 등록된 뒤의 기본 순서는 다음과 같다.
+
+1. 포털에서 설치 파일의 버전, SHA-256, 코드서명 확인 상태를 확인하고 설치 파일을 내려받는다.
+2. Windows 설치를 완료한 뒤 `gg doctor --project <프로젝트 폴더>`로 하네스·체커·도구 상태를 확인한다.
+3. Codex 또는 Claude Code를 선택해 프로젝트에서 `gg init`을 한 번 실행한다. 하네스는 선택한 도구의 지침과 안전한 훅을 적용하되, 기존 설정과 Git 훅을 덮어쓰지 않는다.
+4. `gg start`로 업무 목적을 범주 수준에서 정리하고, `gg design --confirm`으로 화면·기능·DB·관리자 필요성을 확인한다. 개인정보·비밀값은 프롬프트나 증적에 입력하지 않는다.
+5. 구현 전 새 패키지는 `gg package check`로 확인하고, 구현 뒤에는 `gg build`, `gg verify --run-tests`, `gg release` 순서로 검증한다.
+
+도구별 명령과 예외 처리, 현재 시범 운영 범위는 [하네스 설치·사용 안내](./docs/13_harness_install_and_use.md)를 따른다. GitHub Pages/Vercel 시범 포털과 연말 기관 서버 이관 절차는 [시범 포털·기관 서버 이관 계획](./docs/12_pilot_portal_and_server_handover.md)에 기록한다.
+
 ## 현재 검증 범위
 
 `npm test`, `npm run validate:design`, `npm run test:design`은 실행기 회귀, 정책 위변조, 어댑터 드리프트를 검사한다. 실제 `gvskb` 판정은 테스트에서 모사하되, 사용자 PC에서는 설치된 체커 CLI가 원본 검사와 의존성 감사를 수행한다.
