@@ -1,0 +1,20 @@
+name: VibeCode project gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    # 기관 승인 Windows runner에는 Node.js, gvskb와 승인된 하네스 번들이 있어야 합니다.
+    runs-on: [self-hosted, Windows, vibecode-approved]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify project policy, tests and checker evidence
+        shell: pwsh
+        run: node .vibecode-harness/bin/gg.mjs verify --project . --run-tests

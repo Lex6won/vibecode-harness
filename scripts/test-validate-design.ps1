@@ -45,5 +45,9 @@ Assert-MutationFails "adapter policy drift" {
   $text = $text.Replace("allowed_languages=python,javascript,typescript", "allowed_languages=python,javascript,typescript,go")
   Set-Content -LiteralPath $path -Value $text -Encoding utf8 -NoNewline
 }
+Assert-MutationFails "malformed package policy" {
+  param($copy)
+  Set-Content -LiteralPath (Join-Path $copy "shared\references\package-policy.json") -Value "{ invalid" -Encoding utf8 -NoNewline
+}
 
 Write-Output '{"status":"passed","check":"vibecode_harness_design_mutations"}'

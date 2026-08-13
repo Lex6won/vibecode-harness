@@ -58,4 +58,4 @@ execution_contract:
     ci_rule: "CI runs in an isolated environment without secrets. A release stops when checker evidence is incomplete, stale, or lacks the upstream machine verdict."
 
   adapter_integrity:
-    rule: "AGENTS.md and CLAUDE.md are generated from shared templates. gg adapter verify checks template version, allowed languages, and verification command against harness.lock."
+    rule: "AGENTS.md and CLAUDE.md are generated from shared templates. gg doctor and gg verify check adapter presence, allowed languages, and harness.lock integrity."
