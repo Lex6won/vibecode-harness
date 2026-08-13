@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "environment": "pilot",
+  "updated_at": "2026-08-13T00:00:00.000Z",
+  "status": "installer_not_published",
+  "message": "시범 포털입니다. 기관 서명 설치 파일이 아직 등록되지 않았습니다.",
+  "installer": null,
+  "support": {
+    "repository_url": "https://github.com/Lex6won/vibecode-harness",
+    "installation_guide": "https://github.com/Lex6won/vibecode-harness/blob/main/docs/13_harness_install_and_use.md"
+  }
+}

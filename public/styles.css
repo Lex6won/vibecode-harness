@@ -1,0 +1,60 @@
+:root {
+  color-scheme: light;
+  font-family: "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  color: #10213d;
+  background: #f4f7ff;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, a { font: inherit; }
+
+.page-shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 28px 0 42px; }
+.site-header, .hero, .step-card, .notice { background: #fff; border: 1px solid #d7e1f7; border-radius: 16px; }
+.site-header { display: flex; align-items: center; gap: 14px; min-height: 86px; padding: 16px 22px; }
+.brand-mark { display: grid; grid-template-columns: repeat(3, 16px); gap: 4px; width: 64px; height: 54px; align-content: center; padding: 8px; border: 1px solid #d4e0fa; border-radius: 10px; }
+.brand-mark span { height: 16px; background: #249642; }
+.brand-mark span:nth-child(1) { clip-path: polygon(0 0,100% 0,100% 46%,0 100%); }
+.brand-mark span:nth-child(2) { background: #21469b; clip-path: polygon(0 55%,100% 0,100% 100%,0 100%); }
+.brand-mark span:nth-child(3) { background: #21469b; }
+.site-header h1 { margin: 0; font-size: 25px; letter-spacing: 0; }
+.eyebrow { margin: 0 0 4px; font-size: 14px; font-weight: 800; color: #3862ae; }
+.status-badge { margin-left: auto; padding: 9px 14px; background: #d8f47a; border-radius: 999px; font-weight: 800; font-size: 14px; }
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 32px; margin-top: 18px; padding: 46px; align-items: center; min-height: 300px; }
+.hero h2 { margin: 0; font-size: 42px; line-height: 1.22; letter-spacing: 0; }
+.hero-copy { max-width: 650px; margin: 20px 0 0; color: #425574; font-size: 18px; line-height: 1.7; word-break: keep-all; }
+.hero-panel { padding: 28px; border-radius: 14px; background: #eff4ff; border: 1px solid #d7e1f7; }
+.panel-label { margin: 0 0 12px; font-size: 14px; font-weight: 800; color: #3862ae; }
+.hero-panel strong { display: block; font-size: 25px; }
+.hero-panel p:not(.panel-label) { min-height: 48px; margin: 10px 0 18px; color: #425574; line-height: 1.55; word-break: keep-all; }
+.text-button { border: 0; background: transparent; color: #315ba8; padding: 0; font-weight: 800; cursor: pointer; text-decoration: underline; text-underline-offset: 4px; }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 18px; }
+.step-card { position: relative; min-height: 290px; padding: 28px; display: flex; flex-direction: column; align-items: flex-start; }
+.step-card:nth-child(1) { border-top: 4px solid #3e7163; }
+.step-card:nth-child(2) { border-top: 4px solid #5573c6; }
+.step-card:nth-child(3) { border-top: 4px solid #86a841; }
+.step-number { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: #e8effd; color: #315ba8; font-weight: 800; }
+.step-card h2 { margin: 18px 0 10px; font-size: 23px; letter-spacing: 0; }
+.step-card > p { margin: 0; color: #425574; line-height: 1.65; word-break: keep-all; }
+.primary-button, .secondary-button { margin-top: auto; min-height: 47px; display: inline-flex; align-items: center; justify-content: center; padding: 0 18px; border-radius: 9px; text-decoration: none; font-weight: 800; transition: transform .16s ease, box-shadow .16s ease, background .16s ease; }
+.primary-button { color: #fff; background: #3e7163; }
+.secondary-button { color: #315ba8; background: #edf3ff; border: 1px solid #d3e0fa; }
+.primary-button:hover:not(.is-disabled), .secondary-button:hover { transform: translateY(-2px); box-shadow: 0 7px 15px rgba(27, 57, 104, .16); }
+.is-disabled { background: #aab5b1; pointer-events: none; }
+.detail { margin-top: 12px !important; min-height: 41px; font-size: 14px; color: #61718d !important; }
+.notice { margin-top: 18px; padding: 22px 28px; background: #fffbea; border-color: #efe4b6; }
+.notice h2 { margin: 0 0 8px; font-size: 18px; }
+.notice p { margin: 0; color: #5b5134; line-height: 1.6; word-break: keep-all; }
+
+@media (max-width: 820px) {
+  .page-shell { width: min(100% - 24px, 620px); padding-top: 12px; }
+  .site-header { min-height: 76px; padding: 12px 16px; }
+  .site-header h1 { font-size: 21px; }
+  .brand-mark { transform: scale(.86); transform-origin: left center; width: 54px; }
+  .hero { grid-template-columns: 1fr; padding: 28px; min-height: unset; gap: 24px; }
+  .hero h2 { font-size: 32px; }
+  .hero-copy { font-size: 16px; }
+  .steps { grid-template-columns: 1fr; }
+  .step-card { min-height: 245px; }
+  .status-badge { padding: 8px 11px; font-size: 13px; }
+}
