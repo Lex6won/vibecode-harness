@@ -22,7 +22,7 @@ test("Harness Manager applies selected tools without collecting tool credentials
   const source = await readFile(manager, "utf8");
   assert.match(source, /Get-ProjectLock/);
   assert.match(source, /configure/);
-  assert.match(source, /typescript_supabase/);
+  assert.match(source, /typescript_postgres/);
   assert.match(source, /claude-desktop/);
   assert.match(source, /chatgpt-desktop/);
   assert.match(source, /lovable/);

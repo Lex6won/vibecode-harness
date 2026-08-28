@@ -25,7 +25,7 @@ Antigravity 플러그인에는 규칙, 작업 스킬, `PreToolUse` 훅이 들어
 
 기존 `AGENTS.md`, `CLAUDE.md`, Claude 설정, Antigravity의 동일 이름 플러그인은 덮어쓰지 않는다. 기존 Antigravity 플러그인이 있으면 `doctor`가 복구 필요 상태를 보여 주며, 사용자는 내용을 확인한 뒤 병합 또는 재적용한다.
 
-`both`는 기존 호환성을 위해 Codex+Claude Code를 뜻한다. `all`은 Codex, Claude Code, Google Antigravity, Claude Desktop, ChatGPT/Codex Desktop, Lovable+GitHub의 여섯 도구 전체를 뜻한다. Lovable이 포함되므로 `all`의 기본 개발 언어 정책은 TypeScript/Supabase 엄격형이다. CLI에서는 `--tools codex,antigravity`처럼 필요한 조합도 쓸 수 있다.
+`both`는 기존 호환성을 위해 Codex+Claude Code를 뜻한다. `all`은 Codex, Claude Code, Google Antigravity, Claude Desktop, ChatGPT/Codex Desktop, Lovable+GitHub의 여섯 도구 전체를 뜻한다. Lovable이 포함되므로 `all`의 기본 개발 언어 정책은 TypeScript/PostgreSQL 엄격형이다. Supabase는 PostgreSQL 기반의 선택 가능한 Lovable 연동이며, 직접 운영·관리형 PostgreSQL도 같은 언어 정책으로 사용할 수 있다. CLI에서는 `--tools codex,antigravity`처럼 필요한 조합도 쓸 수 있다.
 
 ## 공식 EXE 릴리스
 

@@ -78,7 +78,7 @@ test("init creates locked policy, adapters, and project evidence", async () => {
     assert.deepEqual(lock.allowed_languages, ["javascript", "typescript"]);
     assert.equal(lock.policy_profile, "typescript_web");
     assert.equal(lock.schema_version, 3);
-    assert.match(await readFile(join(project, ".vibecode-harness", "policy", "policy-profiles.json"), "utf8"), /typescript_supabase/);
+    assert.match(await readFile(join(project, ".vibecode-harness", "policy", "policy-profiles.json"), "utf8"), /typescript_postgres/);
     assert.match(await readFile(join(project, ".vibecode-harness", "lib", "policy-engine.mjs"), "utf8"), /languageFailureForPath/);
     assert.match(await readFile(join(project, "AGENTS.md"), "utf8"), /vibecode-harness/);
     assert.match(await readFile(join(project, "CLAUDE.md"), "utf8"), /vibecode-harness/);
@@ -96,7 +96,7 @@ test("init applies every supported tool adapter when all is selected", async () 
     const init = await runGg(project, ["init", "--tools", "all", "--level", "L1"]);
     assert.equal(init.code, 0, init.stdout + init.stderr);
     const lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
-    assert.equal(lock.runtime_profile, "typescript_supabase");
+    assert.equal(lock.runtime_profile, "typescript_postgres");
     assert.deepEqual(lock.tools, ["codex", "claude-code", "google-antigravity", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
     assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "plugin.json"), "utf8"), /vibecode-harness/);
     assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "hooks.json"), "utf8"), /antigravity-pre-tool/);
@@ -114,7 +114,7 @@ test("init applies every supported tool adapter when all is selected", async () 
 test("configure adds and safely removes selected tool adapters", async () => {
   const project = await mkdtemp(join(tmpdir(), "vibecode-harness-configure-"));
   try {
-    const init = await runGg(project, ["init", "--tools", "codex", "--runtime", "typescript_supabase", "--level", "L1"]);
+    const init = await runGg(project, ["init", "--tools", "codex", "--runtime", "typescript_postgres", "--level", "L1"]);
     assert.equal(init.code, 0, init.stdout + init.stderr);
     const added = await runGg(project, ["configure", "--tools", "all"]);
     assert.equal(added.code, 0, added.stdout + added.stderr);

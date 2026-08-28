@@ -9,8 +9,13 @@
       "display_name": "TypeScript 웹",
       "allowed_languages": ["javascript", "typescript"]
     },
+    "typescript_postgres": {
+      "display_name": "TypeScript · PostgreSQL 엄격형",
+      "allowed_languages": ["typescript"],
+      "allowed_declarative_extensions": [".sql", ".json", ".yaml", ".yml", ".toml", ".html", ".css"]
+    },
     "typescript_supabase": {
-      "display_name": "TypeScript · Supabase 엄격형",
+      "display_name": "TypeScript · PostgreSQL 엄격형 (legacy Supabase alias)",
       "allowed_languages": ["typescript"],
       "allowed_declarative_extensions": [".sql", ".json", ".yaml", ".yml", ".toml", ".html", ".css"]
     },

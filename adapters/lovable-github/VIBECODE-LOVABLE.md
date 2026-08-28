@@ -1,13 +1,13 @@
 # VibeCode Harness — Lovable GitHub bridge
 
-This repository uses the `typescript_supabase` profile unless the project lock
+This repository uses the `typescript_postgres` profile unless the project lock
 records another approved profile.
 
 ## Required build boundary
 
 - Application code: TypeScript (`.ts`, `.tsx`) only.
-- Supabase migrations: SQL only.
-- Supabase Edge Functions: TypeScript only.
+- PostgreSQL migrations: SQL only. Supabase migrations are supported when that integration is selected.
+- Supabase Edge Functions, when used: TypeScript only.
 - Do not add Python, JavaScript implementation files, another backend runtime,
   or an unreviewed package.
 
