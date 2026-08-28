@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -90,16 +90,19 @@ test("init creates locked policy, adapters, and project evidence", async () => {
   });
 });
 
-test("init applies Codex, Claude Code, and Antigravity adapters together", async () => {
+test("init applies every supported tool adapter when all is selected", async () => {
   const project = await mkdtemp(join(tmpdir(), "vibecode-harness-all-tools-"));
   try {
-    const init = await runGg(project, ["init", "--tools", "all", "--runtime", "typescript_web", "--level", "L1"]);
+    const init = await runGg(project, ["init", "--tools", "all", "--level", "L1"]);
     assert.equal(init.code, 0, init.stdout + init.stderr);
     const lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
-    assert.deepEqual(lock.tools, ["codex", "claude-code", "google-antigravity"]);
+    assert.equal(lock.runtime_profile, "typescript_supabase");
+    assert.deepEqual(lock.tools, ["codex", "claude-code", "google-antigravity", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
     assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "plugin.json"), "utf8"), /vibecode-harness/);
     assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "hooks.json"), "utf8"), /antigravity-pre-tool/);
     assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "skills", "vibecode-workflow", "SKILL.md"), "utf8"), /gg verify/);
+    assert.match(await readFile(join(project, "VIBECODE-LOVABLE.md"), "utf8"), /TypeScript/);
+    assert.ok(await stat(join(project, ".github", "workflows", "vibecode-harness.yml")));
     const doctor = await runGg(project, ["doctor"]);
     assert.notEqual(doctor.code, 70, doctor.stdout + doctor.stderr);
     assert.match(doctor.stdout, /"google_antigravity": "applied"/);
@@ -111,16 +114,16 @@ test("init applies Codex, Claude Code, and Antigravity adapters together", async
 test("configure adds and safely removes selected tool adapters", async () => {
   const project = await mkdtemp(join(tmpdir(), "vibecode-harness-configure-"));
   try {
-    const init = await runGg(project, ["init", "--tools", "codex", "--runtime", "typescript_web", "--level", "L1"]);
+    const init = await runGg(project, ["init", "--tools", "codex", "--runtime", "typescript_supabase", "--level", "L1"]);
     assert.equal(init.code, 0, init.stdout + init.stderr);
     const added = await runGg(project, ["configure", "--tools", "all"]);
     assert.equal(added.code, 0, added.stdout + added.stderr);
     let lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
-    assert.deepEqual(lock.tools, ["codex", "claude-code", "google-antigravity"]);
+    assert.deepEqual(lock.tools, ["codex", "claude-code", "google-antigravity", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
     assert.match(await readFile(join(project, ".claude", "settings.json"), "utf8"), /claude-pre-tool/);
     assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "hooks.json"), "utf8"), /antigravity-pre-tool/);
 
-    const removed = await runGg(project, ["configure", "--remove", "claude,antigravity"]);
+    const removed = await runGg(project, ["configure", "--remove", "claude,antigravity,claude-desktop,chatgpt-desktop,lovable"]);
     assert.equal(removed.code, 0, removed.stdout + removed.stderr);
     lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
     assert.deepEqual(lock.tools, ["codex"]);

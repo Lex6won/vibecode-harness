@@ -93,7 +93,7 @@ function usage() {
   print(`바이브코드 하네스 실행기
 
 사용법:
-  node bin/gg.mjs init --project <폴더> [--tools codex|claude|antigravity|both|all|codex,claude] [--runtime python_internal|node_web|typescript_web] [--level L1|L2|L3] [--ci]
+  node bin/gg.mjs init --project <폴더> [--tools codex|claude|antigravity|claude-desktop|chatgpt-desktop|lovable|both|all|codex,claude] [--runtime python_internal|node_web|typescript_web|typescript_supabase] [--level L1|L2|L3] [--ci]
   node bin/gg.mjs init --interactive
   node bin/gg.mjs configure --project <folder> [--tools codex,claude,antigravity] [--remove codex,claude,antigravity]
   node bin/gg.mjs doctor [--project <폴더>]
@@ -625,12 +625,12 @@ async function bundleCommand(options) {
 function selectedTools(value) {
   const input = String(value || "both").trim().toLowerCase();
   if (input === "both") return [TOOL_NAMES.codex, TOOL_NAMES.claude];
-  if (input === "all") return [TOOL_NAMES.codex, TOOL_NAMES.claude, TOOL_NAMES.antigravity];
+  if (input === "all") return [...new Set(Object.values(TOOL_NAMES))];
   const tokens = input.split(",").map((token) => token.trim()).filter(Boolean);
   if (!tokens.length) throw new Error("--tools에 하나 이상의 AI 도구를 지정하세요.");
   const tools = tokens.map((token) => TOOL_NAMES[token]);
   if (tools.some((tool) => !tool)) {
-    throw new Error("--tools는 codex, claude, antigravity, both, all 또는 쉼표로 구분한 조합이어야 합니다.");
+    throw new Error("--tools는 codex, claude, antigravity, claude-desktop, chatgpt-desktop, lovable, both, all 또는 쉼표로 구분한 조합이어야 합니다.");
   }
   return [...new Set(tools)];
 }
@@ -680,10 +680,14 @@ async function interactiveInitCommand(options) {
       : await prompt.question(`프로젝트 폴더 [${process.cwd()}]: `);
     const tools = options.tools && options.tools !== true
       ? options.tools
-      : await prompt.question("AI 도구 (codex, claude, antigravity, all) [all]: ");
+      : await prompt.question("AI 도구 (codex, claude, antigravity, claude-desktop, chatgpt-desktop, lovable, all) [all]: ");
+    const selectedInput = String(tools || "all").trim().toLowerCase();
+    const defaultRuntime = selectedInput === "all" || selectedInput.split(",").includes("lovable") || selectedInput.split(",").includes("lovable-github")
+      ? "typescript_supabase"
+      : "typescript_web";
     const runtime = options.runtime && options.runtime !== true
       ? options.runtime
-      : await prompt.question("프로젝트 유형 (typescript_web, node_web, python_internal) [typescript_web]: ");
+      : await prompt.question(`프로젝트 유형 (typescript_supabase, typescript_web, node_web, python_internal) [${defaultRuntime}]: `);
     const level = options.level && options.level !== true
       ? options.level
       : await prompt.question("점검 수준 (L1, L2, L3) [L2]: ");
@@ -691,7 +695,7 @@ async function interactiveInitCommand(options) {
       ...options,
       project: project || process.cwd(),
       tools: tools || "all",
-      runtime: runtime || "typescript_web",
+      runtime: runtime || defaultRuntime,
       level: level || "L2"
     });
   } finally {
@@ -702,7 +706,7 @@ async function interactiveInitCommand(options) {
 async function initCommand(options) {
   const project = projectPath(options);
   const tools = selectedTools(options.tools || "both");
-  const runtime = options.runtime || "typescript_web";
+  const runtime = options.runtime || (String(options.tools || "").trim().toLowerCase() === "all" ? "typescript_supabase" : "typescript_web");
   const level = options.level || "L2";
   if (!['python_internal', 'node_web', 'typescript_web', 'typescript_supabase'].includes(runtime)) throw new Error("허용되지 않은 --runtime 값입니다.");
   if (includesTool(tools, TOOL_NAMES.lovable) && runtime !== "typescript_supabase") throw new Error("Lovable GitHub projects require the typescript_supabase runtime profile.");
