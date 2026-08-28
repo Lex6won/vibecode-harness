@@ -28,14 +28,14 @@ Assert-MutationFails "unexpected allowed language" {
   param($copy)
   $path = Join-Path $copy "shared\harness-core.yaml"
   $text = Get-Content -LiteralPath $path -Raw -Encoding utf8
-  $text = $text -replace "(?m)^    - typescript$", "    - typescript`r`n    - go"
+  $text = $text -replace "(?m)^    - typescript\r?$", "    - typescript`r`n    - go"
   Set-Content -LiteralPath $path -Value $text -Encoding utf8 -NoNewline
 }
 Assert-MutationFails "allowed denied overlap" {
   param($copy)
   $path = Join-Path $copy "shared\harness-core.yaml"
   $text = Get-Content -LiteralPath $path -Raw -Encoding utf8
-  $text = $text -replace "(?m)^  denied_without_exception:$", "  denied_without_exception:`r`n    - typescript"
+  $text = $text -replace "(?m)^  denied_without_exception:\r?$", "  denied_without_exception:`r`n    - typescript"
   Set-Content -LiteralPath $path -Value $text -Encoding utf8 -NoNewline
 }
 Assert-MutationFails "adapter policy drift" {
