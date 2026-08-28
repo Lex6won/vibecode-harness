@@ -7,7 +7,7 @@
   "installer": {
     "version": "0.2.0-demo.1",
     "download_url": "https://github.com/Lex6won/vibecode-harness/releases/download/v0.2.0-demo.1/Gyeonggi-VibeCode-Harness-Demo-Unsigned-Setup.exe",
-    "sha256": "f9d5b5c046e45fa854d333b66cb5e9b6778bc00b4d8dc290d0c8fce94b70b2bd",
+    "sha256": "ad871663b3c800ec35c2deb9cba6ac655ea0d46825f41c48eba16a22b73684a5",
     "signature_status": "pem_bundle_verified_unsigned_demo",
     "bundle_signer_key_id": "gyeonggi-demo-pem-20260828",
     "expires_at": "2026-11-26T06:30:24.982Z"
