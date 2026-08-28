@@ -1,16 +1,16 @@
 {
   "schema_version": 2,
   "environment": "demonstration",
-  "updated_at": "2026-08-28T06:35:00.000Z",
+  "updated_at": "2026-08-28T07:19:00.000Z",
   "status": "demo_installer_published",
   "message": "Demonstration package only. It is PEM bundle-verified but intentionally unsigned; do not use it for production work.",
   "installer": {
-    "version": "0.2.0-demo.1",
-    "download_url": "https://github.com/Lex6won/vibecode-harness/releases/download/v0.2.0-demo.1/Gyeonggi-VibeCode-Harness-Demo-Unsigned-Setup.exe",
-    "sha256": "ad871663b3c800ec35c2deb9cba6ac655ea0d46825f41c48eba16a22b73684a5",
+    "version": "0.2.0-demo.2",
+    "download_url": "https://github.com/Lex6won/vibecode-harness/releases/download/v0.2.0-demo.2/Gyeonggi-VibeCode-Harness-Demo-Unsigned-Setup.exe",
+    "sha256": "bbd528dac604a031e2e03849073ca3810f1c1744d7ed65d0487f4d27d7f644df",
     "signature_status": "pem_bundle_verified_unsigned_demo",
     "bundle_signer_key_id": "gyeonggi-demo-pem-20260828",
-    "expires_at": "2026-11-26T06:30:24.982Z"
+    "expires_at": "2026-11-26T07:18:58.422Z"
   },
   "capabilities": {
     "supported_tools": [
