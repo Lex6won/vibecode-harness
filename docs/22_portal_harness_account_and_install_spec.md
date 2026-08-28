@@ -148,3 +148,34 @@ gg restore --project <폴더> --backup <백업번호>
 - 기존 사용자 설정은 삭제되지 않고 백업·복구할 수 있다.
 - 체커는 포털 서버에서 실행되며 사용자 PC에 체커 설치를 요구하지 않는다.
 - 상태 보고에는 프로젝트 소스·경로·AI 자격증명을 포함하지 않는다. 소스는 사용자가 서버 점검을 명시적으로 요청한 경우에만 선택 범위를 전송한다.
+
+---
+
+## 개정 이력
+
+### 2026-08-28 (2차) — 체커 번들 원칙 개정 + 구현 확인 결과 반영
+
+**개정 (사용자 확정):** "공식 EXE 배포 전 구현 4번(사용자 EXE의 체커·Python 의존성 제거)"을 다음으로 대체한다.
+
+> **최종 보안 점검은 포털(서버 체커)에서 수행한다.** 사용자 PC의 하네스는
+> 패키지 사전확인(`gg package check`)과 개발 중 검증에 쓰는 **체커를 번들로 유지**한다
+> — 오프라인에서도 패키지 도입 전 확인이 가능해야 하기 때문이다.
+> `doctor` 는 로컬 설정 상태를 확인하고, 상태 보고 연동이 구현되면 포털 연결도 확인한다.
+
+근거: 하네스 `gg verify` 가 최종 판단을 `ready_for_portal_scan`(포털 점검 필요)으로
+넘기는 구현이 이미 완료되어, 서버 체커 모델과 로컬 사전확인이 역할로 분리되었다.
+
+**구현 확인 결과 (2026-08-28 포털 측 검증):**
+
+- 지원 도구는 6종으로 확대 확인: Codex · Claude Code · Google Antigravity ·
+  Claude Desktop · ChatGPT Desktop · Lovable(+GitHub). 본문 3종 목록을 대체한다.
+- Lovable 은 `typescript_postgres`(TypeScript·PostgreSQL 엄격형) 프로파일 + GitHub
+  PR 게이트 전제로 동작한다. Supabase 는 기본이 아니라 선택 통합(legacy 별칭)이다.
+  Lovable·Supabase 의 공공 실사용 허용 여부는 보안부서 정책 확인 대기 —
+  확인 전까지 포털 안내 화면에는 지원 도구로 표기하지 않는다.
+- `gg configure --tools/--remove`(도구 추가·해제)와 Harness Manager GUI(manager.ps1,
+  EXE 실행 후 화면)는 구현 확인. `gg restore`(백업 복구 명령)는 미구현 — 잔여 작업.
+- 하네스의 "pilot portal"(GitHub Pages)은 EXE 화면이 아니라 **별도 웹 배포 페이지**다
+  (파일럿 한정 임시 채널). 정식 단계에는 보안 게이트 포털이 하네스의
+  `release-index.json` 계약(installer_published·SHA-256·서명 상태)을 소비해
+  배포 창구를 포털로 일원화한다.
