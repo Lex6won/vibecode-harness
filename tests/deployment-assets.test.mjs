@@ -10,7 +10,7 @@ test("pilot portal labels a PEM-verified unsigned demonstration installer separa
   const app = await readFile(join(root, "public", "demo-app.js"), "utf8");
   assert.equal(index.status, "demo_installer_published");
   assert.equal(index.installer.signature_status, "pem_bundle_verified_unsigned_demo");
-  assert.match(index.installer.download_url, /v0\.2\.0-demo\.1/);
+  assert.match(index.installer.download_url, /\/v0\.2\.0-demo\.\d+\//);
   assert.deepEqual(index.capabilities.supported_tools, ["codex", "claude-code", "google-antigravity", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
   assert.match(index.capabilities.update_policy, /does not update automatically/);
   assert.match(app, /installer_published/);
