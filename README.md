@@ -101,7 +101,7 @@ PowerShell에서 아래처럼 하네스 명령 위치를 변수로 지정합니�
 ```powershell
 $gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
 
-& $gg init --project C:\work\my-service --tools all --runtime typescript_supabase --level L2
+& $gg init --project C:\work\my-service --tools all --runtime typescript_postgres --level L2
 & $gg doctor --project C:\work\my-service
 ```
 
@@ -109,7 +109,7 @@ $gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
 
 | 항목 | 선택 값 | 언제 선택하나요 |
 |---|---|---|
-| AI 도구 | `codex`, `claude`, `antigravity`, `claude-desktop`, `chatgpt-desktop`, `lovable`, `both`, `all` | 하나만 또는 여러 도구를 같은 프로젝트에 적용할 때. `both`는 Codex+Claude Code, `all`은 지원하는 여섯 도구 전체입니다. `all`과 Lovable은 TypeScript/Supabase 엄격형을 사용합니다. |
+| AI 도구 | `codex`, `claude`, `antigravity`, `claude-desktop`, `chatgpt-desktop`, `lovable`, `both`, `all` | 하나만 또는 여러 도구를 같은 프로젝트에 적용할 때. `both`는 Codex+Claude Code, `all`은 지원하는 여섯 도구 전체입니다. `all`과 Lovable은 TypeScript/PostgreSQL 엄격형을 사용하며 Supabase는 선택 가능한 PostgreSQL 연동입니다. |
 | 개발 방식 | `python_internal` | 내부 업무 처리·데이터 처리 중심 도구 |
 |  | `node_web` | JavaScript 기반 웹 도구 |
 |  | `typescript_web` | TypeScript 기반 웹 도구, 일반적인 웹 업무 도구에 권장 |
@@ -161,7 +161,7 @@ $gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
 | Google Antigravity | 프로젝트의 `.agents/plugins/vibecode-harness/`에 규칙, 스킬, 작업 전 Hook을 적용합니다. 지원하지 않는 언어와 직접 패키지 설치 명령은 Hook이 차단합니다. |
 | Claude Desktop | 프로젝트 정책 안내를 적용하고 Git 게이트에서 언어·런타임을 강제합니다. 일반 파일 작업을 가로채는 훅을 보장하지 않습니다. |
 | ChatGPT/Codex Desktop | 로컬 체크아웃의 `AGENTS.md`와 프로젝트 정책, Git 게이트를 사용합니다. 로그인 정보·토큰은 읽지 않습니다. |
-| Lovable + GitHub | `typescript_supabase` 엄격 프로필과 전용 동기화 브랜치·GitHub PR 게이트를 적용합니다. Lovable 내부 지침은 안내이며 PR 게이트가 강제 지점입니다. |
+| Lovable + GitHub | `typescript_postgres` 엄격 프로필과 전용 동기화 브랜치·GitHub PR 게이트를 적용합니다. Supabase는 PostgreSQL 기반의 선택 가능한 연동이며, Lovable 내부 지침은 안내이고 PR 게이트가 강제 지점입니다. |
 
 Git 저장소이고 기존 Hook 설정과 충돌하지 않는 경우에는 커밋 전에 `gg verify --hook`을 실행하는 Hook도 적용합니다. 기존 Hook이 있으면 덮어쓰지 않고 수동 확인이 필요하다고 알려줍니다.
 

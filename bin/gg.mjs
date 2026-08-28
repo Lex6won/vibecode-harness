@@ -93,7 +93,7 @@ function usage() {
   print(`바이브코드 하네스 실행기
 
 사용법:
-  node bin/gg.mjs init --project <폴더> [--tools codex|claude|antigravity|claude-desktop|chatgpt-desktop|lovable|both|all|codex,claude] [--runtime python_internal|node_web|typescript_web|typescript_supabase] [--level L1|L2|L3] [--ci]
+  node bin/gg.mjs init --project <폴더> [--tools codex|claude|antigravity|claude-desktop|chatgpt-desktop|lovable|both|all|codex,claude] [--runtime python_internal|node_web|typescript_web|typescript_postgres] [--level L1|L2|L3] [--ci]
   node bin/gg.mjs init --interactive
   node bin/gg.mjs configure --project <folder> [--tools codex,claude,antigravity] [--remove codex,claude,antigravity]
   node bin/gg.mjs doctor [--project <폴더>]
@@ -396,7 +396,7 @@ async function policyCheck(project, lock) {
   if (lock.runtime_profile === "node_web") {
     for (const file of implementationFiles) if ([".ts", ".tsx"].includes(extname(file).toLowerCase())) failures.push(`Node.js 트랙에서 TypeScript 구현 파일을 발견했습니다: ${relative(project, file)}`);
   }
-  if (["typescript_web", "typescript_supabase"].includes(lock.runtime_profile) && implementationFiles.length && !implementationFiles.some((file) => [".ts", ".tsx"].includes(extname(file).toLowerCase()))) {
+  if (["typescript_web", "typescript_postgres", "typescript_supabase"].includes(lock.runtime_profile) && implementationFiles.length && !implementationFiles.some((file) => [".ts", ".tsx"].includes(extname(file).toLowerCase()))) {
     failures.push("TypeScript 트랙에는 .ts 또는 .tsx 구현 파일이 하나 이상 필요합니다.");
   }
   const packageJson = join(project, "package.json");
@@ -411,7 +411,7 @@ async function policyCheck(project, lock) {
     } catch { failures.push("package.json 형식이 올바르지 않습니다."); }
   }
   const pythonIndicators = ["requirements.txt", "pyproject.toml", "Pipfile"];
-  if (["node_web", "typescript_web", "typescript_supabase"].includes(lock.runtime_profile)) {
+  if (["node_web", "typescript_web", "typescript_postgres", "typescript_supabase"].includes(lock.runtime_profile)) {
     for (const item of pythonIndicators) if (await pathExists(join(project, item))) failures.push(`${lock.runtime_profile} 트랙에서 Python 의존성 선언을 발견했습니다: ${item}`);
   }
   if (lock.runtime_profile === "python_internal") {
@@ -436,7 +436,7 @@ async function policyCheck(project, lock) {
 
 async function runtimeCheck(lock) {
   const checks = [];
-  if (["node_web", "typescript_web", "typescript_supabase"].includes(lock.runtime_profile)) {
+  if (["node_web", "typescript_web", "typescript_postgres", "typescript_supabase"].includes(lock.runtime_profile)) {
     const result = await run(process.execPath, ["--version"]);
     const major = Number((result.stdout.match(/v(\d+)/) || [])[1]);
     if (!Number.isInteger(major) || major < 22) checks.push(`Node.js 22 이상이 필요합니다. 현재: ${result.stdout.trim() || "확인 불가"}`);
@@ -683,11 +683,11 @@ async function interactiveInitCommand(options) {
       : await prompt.question("AI 도구 (codex, claude, antigravity, claude-desktop, chatgpt-desktop, lovable, all) [all]: ");
     const selectedInput = String(tools || "all").trim().toLowerCase();
     const defaultRuntime = selectedInput === "all" || selectedInput.split(",").includes("lovable") || selectedInput.split(",").includes("lovable-github")
-      ? "typescript_supabase"
+      ? "typescript_postgres"
       : "typescript_web";
     const runtime = options.runtime && options.runtime !== true
       ? options.runtime
-      : await prompt.question(`프로젝트 유형 (typescript_supabase, typescript_web, node_web, python_internal) [${defaultRuntime}]: `);
+      : await prompt.question(`프로젝트 유형 (typescript_postgres, typescript_web, node_web, python_internal) [${defaultRuntime}]: `);
     const level = options.level && options.level !== true
       ? options.level
       : await prompt.question("점검 수준 (L1, L2, L3) [L2]: ");
@@ -706,10 +706,11 @@ async function interactiveInitCommand(options) {
 async function initCommand(options) {
   const project = projectPath(options);
   const tools = selectedTools(options.tools || "both");
-  const runtime = options.runtime || (String(options.tools || "").trim().toLowerCase() === "all" ? "typescript_supabase" : "typescript_web");
+  const requestedRuntime = options.runtime || (String(options.tools || "").trim().toLowerCase() === "all" ? "typescript_postgres" : "typescript_web");
+  const runtime = requestedRuntime === "typescript_supabase" ? "typescript_postgres" : requestedRuntime;
   const level = options.level || "L2";
-  if (!['python_internal', 'node_web', 'typescript_web', 'typescript_supabase'].includes(runtime)) throw new Error("허용되지 않은 --runtime 값입니다.");
-  if (includesTool(tools, TOOL_NAMES.lovable) && runtime !== "typescript_supabase") throw new Error("Lovable GitHub projects require the typescript_supabase runtime profile.");
+  if (!['python_internal', 'node_web', 'typescript_web', 'typescript_postgres'].includes(runtime)) throw new Error("허용되지 않은 --runtime 값입니다.");
+  if (includesTool(tools, TOOL_NAMES.lovable) && runtime !== "typescript_postgres") throw new Error("Lovable GitHub projects require the typescript_postgres runtime profile.");
   if (!['L1', 'L2', 'L3'].includes(level)) throw new Error("--level은 L1, L2, L3 중 하나여야 합니다.");
   await mkdir(project, { recursive: true });
   const harnessDir = join(project, ".vibecode-harness");
@@ -848,7 +849,7 @@ async function configureCommand(options) {
   const desired = options.tools ? new Set(selectedTools(options.tools)) : new Set(current);
   if (options.remove) for (const tool of selectedTools(options.remove)) desired.delete(tool);
   if (!desired.size) throw new Error("At least one AI tool must remain selected for a managed project.");
-  if (desired.has(TOOL_NAMES.lovable) && lock.runtime_profile !== "typescript_supabase") throw new Error("Lovable GitHub support requires an existing typescript_supabase project. Create or migrate the project with that policy profile first.");
+  if (desired.has(TOOL_NAMES.lovable) && !["typescript_postgres", "typescript_supabase"].includes(lock.runtime_profile)) throw new Error("Lovable GitHub support requires an existing typescript_postgres project. Create or migrate the project with that policy profile first.");
 
   const harnessDir = join(project, ".vibecode-harness");
   const changes = { added: [], removed: [], preserved: [] };

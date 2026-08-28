@@ -20,19 +20,20 @@ function runGg(project, args) {
   });
 }
 
-test("TypeScript Supabase profile permits only TypeScript implementation sources", () => {
-  assert.equal(languageFailureForPath("typescript_supabase", "src/App.tsx"), null);
-  assert.equal(languageFailureForPath("typescript_supabase", "supabase/migrations/001.sql"), null);
-  assert.match(languageFailureForPath("typescript_supabase", "src/server.js"), /JavaScript/);
-  assert.match(languageFailureForPath("typescript_supabase", "worker.py"), /Python/);
-  assert.match(runtimeFailureForCommand("typescript_supabase", "python tool.py"), /Python/);
-  assert.equal(runtimeFailureForCommand("typescript_supabase", "supabase functions deploy hello"), null);
+test("TypeScript PostgreSQL profile permits only TypeScript implementation sources", () => {
+  assert.equal(languageFailureForPath("typescript_postgres", "src/App.tsx"), null);
+  assert.equal(languageFailureForPath("typescript_postgres", "postgres/migrations/001.sql"), null);
+  assert.match(languageFailureForPath("typescript_postgres", "src/server.js"), /JavaScript/);
+  assert.match(languageFailureForPath("typescript_postgres", "worker.py"), /Python/);
+  assert.match(runtimeFailureForCommand("typescript_postgres", "python tool.py"), /Python/);
+  assert.equal(runtimeFailureForCommand("typescript_postgres", "supabase functions deploy hello"), null);
+  assert.equal(languageFailureForPath("typescript_supabase", "src/App.tsx"), null, "legacy Supabase lock remains compatible");
 });
 
-test("TypeScript Supabase project blocks JavaScript and Python bypasses", async () => {
+test("TypeScript PostgreSQL project blocks JavaScript and Python bypasses", async () => {
   const project = await mkdtemp(join(tmpdir(), "vibecode-harness-supabase-"));
   try {
-    const init = await runGg(project, ["init", "--tools", "codex", "--runtime", "typescript_supabase", "--level", "L1"]);
+    const init = await runGg(project, ["init", "--tools", "codex", "--runtime", "typescript_postgres", "--level", "L1"]);
     assert.equal(init.code, 0, init.stdout + init.stderr);
     await writeFile(join(project, "App.tsx"), "export const App = () => null;\n");
     await writeFile(join(project, "unsafe.js"), "export default 1;\n");
@@ -83,7 +84,7 @@ test("desktop guidance and Lovable GitHub bridge are applied with explicit enfor
   try {
     const init = await runGg(project, [
       "init", "--tools", "codex,claude-desktop,chatgpt-desktop,lovable",
-      "--runtime", "typescript_supabase", "--level", "L1"
+      "--runtime", "typescript_postgres", "--level", "L1"
     ]);
     assert.equal(init.code, 0, init.stdout + init.stderr);
     const lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
@@ -102,12 +103,12 @@ test("desktop guidance and Lovable GitHub bridge are applied with explicit enfor
   }
 });
 
-test("Lovable GitHub support refuses a non-TypeScript-Supabase policy profile", async () => {
+test("Lovable GitHub support refuses a non-TypeScript-PostgreSQL policy profile", async () => {
   const project = await mkdtemp(join(tmpdir(), "vibecode-harness-lovable-profile-"));
   try {
     const result = await runGg(project, ["init", "--tools", "lovable", "--runtime", "typescript_web", "--level", "L1"]);
     assert.equal(result.code, 70, result.stdout + result.stderr);
-    assert.match(result.stderr, /typescript_supabase/);
+    assert.match(result.stderr, /typescript_postgres/);
   } finally {
     await rm(project, { recursive: true, force: true });
   }
@@ -116,7 +117,7 @@ test("Lovable GitHub support refuses a non-TypeScript-Supabase policy profile", 
 test("configure preserves a user-modified Lovable guidance file instead of deleting it", async () => {
   const project = await mkdtemp(join(tmpdir(), "vibecode-harness-lovable-preserve-"));
   try {
-    const init = await runGg(project, ["init", "--tools", "codex,lovable", "--runtime", "typescript_supabase", "--level", "L1"]);
+    const init = await runGg(project, ["init", "--tools", "codex,lovable", "--runtime", "typescript_postgres", "--level", "L1"]);
     assert.equal(init.code, 0, init.stdout + init.stderr);
     const guide = join(project, "VIBECODE-LOVABLE.md");
     await appendFile(guide, "\nUser-specific Lovable instruction.\n");
