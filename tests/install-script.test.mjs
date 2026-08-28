@@ -26,6 +26,8 @@ test("GitHub pilot installer has explicit source acknowledgement and no bypass e
   assert.match(source, /InstallPrerequisites/);
   assert.match(source, /OpenJS\.NodeJS\.LTS/);
   assert.match(source, /Python\.Python\.3\.13/);
+  assert.match(source, /antigravity-pre-tool\.mjs/);
+  assert.match(source, /adapters\\antigravity\\plugin\.json/);
   assert.match(source, /vibecode-checker\/archive\/refs\/heads\/main\.zip/);
   assert.match(source, /staging-\$PID/);
   assert.doesNotMatch(source, /ExecutionPolicy\s+Bypass/i);
@@ -39,6 +41,13 @@ test("GitHub pilot installer is valid PowerShell syntax", async () => {
   const result = await run(executable, ["-NoProfile", "-NonInteractive", "-Command", `[void][scriptblock]::Create([IO.File]::ReadAllText('${escaped}')); Write-Output 'parsed'`]);
   assert.equal(result.code, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /parsed/);
+});
+
+test("GitHub pilot installer ignores the Windows Store python alias", async () => {
+  const source = await readFile(installer, "utf8");
+  assert.match(source, /Test-WindowsStoreAlias/);
+  assert.match(source, /Microsoft\\WindowsApps\\python\.exe/);
+  assert.match(source, /if \(Test-WindowsStoreAlias \$python\) \{ return \$null \}/);
 });
 
 test("GitHub pilot installer refuses an unacknowledged moving source", async () => {

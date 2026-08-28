@@ -1,10 +1,29 @@
 {
-  "schema_version": 1,
-  "environment": "pilot",
-  "updated_at": "2026-08-13T00:00:00.000Z",
-  "status": "installer_not_published",
-  "message": "시범 포털입니다. 기관 서명 설치 파일이 아직 등록되지 않았습니다.",
-  "installer": null,
+  "schema_version": 2,
+  "environment": "demonstration",
+  "updated_at": "2026-08-28T06:35:00.000Z",
+  "status": "demo_installer_published",
+  "message": "Demonstration package only. It is PEM bundle-verified but intentionally unsigned; do not use it for production work.",
+  "installer": {
+    "version": "0.2.0-demo.1",
+    "download_url": "https://github.com/Lex6won/vibecode-harness/releases/download/v0.2.0-demo.1/Gyeonggi-VibeCode-Harness-Demo-Unsigned-Setup.exe",
+    "sha256": "f9d5b5c046e45fa854d333b66cb5e9b6778bc00b4d8dc290d0c8fce94b70b2bd",
+    "signature_status": "pem_bundle_verified_unsigned_demo",
+    "bundle_signer_key_id": "gyeonggi-demo-pem-20260828",
+    "expires_at": "2026-11-26T06:30:24.982Z"
+  },
+  "capabilities": {
+    "supported_tools": [
+      "codex",
+      "claude-code",
+      "google-antigravity",
+      "claude-desktop",
+      "chatgpt-codex-desktop",
+      "lovable-github"
+    ],
+    "project_setup": "Select a project folder and the AI tools to configure. No AI-tool credentials are collected.",
+    "update_policy": "The demonstration installer does not update automatically. Production updates require a separately signed release."
+  },
   "support": {
     "repository_url": "https://github.com/Lex6won/vibecode-harness",
     "installation_guide": "https://github.com/Lex6won/vibecode-harness/blob/main/docs/13_harness_install_and_use.md"

@@ -10,7 +10,7 @@ body { margin: 0; min-width: 320px; }
 button, a { font: inherit; }
 
 .page-shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 28px 0 42px; }
-.site-header, .hero, .step-card, .notice { background: #fff; border: 1px solid #d7e1f7; border-radius: 16px; }
+.site-header, .hero, .step-card, .notice, .service-status { background: #fff; border: 1px solid #d7e1f7; border-radius: 16px; }
 .site-header { display: flex; align-items: center; gap: 14px; min-height: 86px; padding: 16px 22px; }
 .brand-mark { display: grid; grid-template-columns: repeat(3, 16px); gap: 4px; width: 64px; height: 54px; align-content: center; padding: 8px; border: 1px solid #d4e0fa; border-radius: 10px; }
 .brand-mark span { height: 16px; background: #249642; }
@@ -45,6 +45,10 @@ button, a { font: inherit; }
 .notice { margin-top: 18px; padding: 22px 28px; background: #fffbea; border-color: #efe4b6; }
 .notice h2 { margin: 0 0 8px; font-size: 18px; }
 .notice p { margin: 0; color: #5b5134; line-height: 1.6; word-break: keep-all; }
+.service-status { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 18px; padding: 24px 28px; }
+.service-status h2 { margin: 4px 0 10px; font-size: 22px; }
+.service-status p { margin: 0; color: #385070; line-height: 1.65; word-break: keep-all; }
+.service-status-detail { display: grid; gap: 12px; align-content: center; }
 
 @media (max-width: 820px) {
   .page-shell { width: min(100% - 24px, 620px); padding-top: 12px; }
@@ -55,6 +59,7 @@ button, a { font: inherit; }
   .hero h2 { font-size: 32px; }
   .hero-copy { font-size: 16px; }
   .steps { grid-template-columns: 1fr; }
+  .service-status { grid-template-columns: 1fr; }
   .step-card { min-height: 245px; }
   .status-badge { padding: 8px 11px; font-size: 13px; }
 }

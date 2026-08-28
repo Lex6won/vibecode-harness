@@ -1,6 +1,6 @@
 {
   "name": "vibecode-harness",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "bin": {
@@ -10,7 +10,8 @@
     "gg": "node ./bin/gg.mjs",
     "test": "node --test ./tests/*.test.mjs",
     "validate:design": "node ./scripts/run-windows-powershell.mjs validate-design.ps1",
-    "test:design": "node ./scripts/run-windows-powershell.mjs test-validate-design.ps1"
+    "test:design": "node ./scripts/run-windows-powershell.mjs test-validate-design.ps1",
+    "release:preflight": "node ./scripts/release-preflight.mjs"
   },
   "engines": {
     "node": ">=22.0.0"

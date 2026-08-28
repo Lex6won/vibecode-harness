@@ -75,7 +75,11 @@ async function withProject(factory, body) {
 test("init creates locked policy, adapters, and project evidence", async () => {
   await withProject(makeProject, async (project) => {
     const lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
-    assert.deepEqual(lock.allowed_languages, ["python", "javascript", "typescript"]);
+    assert.deepEqual(lock.allowed_languages, ["javascript", "typescript"]);
+    assert.equal(lock.policy_profile, "typescript_web");
+    assert.equal(lock.schema_version, 3);
+    assert.match(await readFile(join(project, ".vibecode-harness", "policy", "policy-profiles.json"), "utf8"), /typescript_supabase/);
+    assert.match(await readFile(join(project, ".vibecode-harness", "lib", "policy-engine.mjs"), "utf8"), /languageFailureForPath/);
     assert.match(await readFile(join(project, "AGENTS.md"), "utf8"), /vibecode-harness/);
     assert.match(await readFile(join(project, "CLAUDE.md"), "utf8"), /vibecode-harness/);
     assert.match(await readFile(join(project, ".claude", "settings.json"), "utf8"), /PreToolUse/);
@@ -84,6 +88,65 @@ test("init creates locked policy, adapters, and project evidence", async () => {
     assert.notEqual(localRunner.code, 70, localRunner.stderr || localRunner.stdout);
     assert.doesNotMatch(localRunner.stderr, /ERR_MODULE_NOT_FOUND/);
   });
+});
+
+test("init applies Codex, Claude Code, and Antigravity adapters together", async () => {
+  const project = await mkdtemp(join(tmpdir(), "vibecode-harness-all-tools-"));
+  try {
+    const init = await runGg(project, ["init", "--tools", "all", "--runtime", "typescript_web", "--level", "L1"]);
+    assert.equal(init.code, 0, init.stdout + init.stderr);
+    const lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
+    assert.deepEqual(lock.tools, ["codex", "claude-code", "google-antigravity"]);
+    assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "plugin.json"), "utf8"), /vibecode-harness/);
+    assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "hooks.json"), "utf8"), /antigravity-pre-tool/);
+    assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "skills", "vibecode-workflow", "SKILL.md"), "utf8"), /gg verify/);
+    const doctor = await runGg(project, ["doctor"]);
+    assert.notEqual(doctor.code, 70, doctor.stdout + doctor.stderr);
+    assert.match(doctor.stdout, /"google_antigravity": "applied"/);
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
+
+test("configure adds and safely removes selected tool adapters", async () => {
+  const project = await mkdtemp(join(tmpdir(), "vibecode-harness-configure-"));
+  try {
+    const init = await runGg(project, ["init", "--tools", "codex", "--runtime", "typescript_web", "--level", "L1"]);
+    assert.equal(init.code, 0, init.stdout + init.stderr);
+    const added = await runGg(project, ["configure", "--tools", "all"]);
+    assert.equal(added.code, 0, added.stdout + added.stderr);
+    let lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
+    assert.deepEqual(lock.tools, ["codex", "claude-code", "google-antigravity"]);
+    assert.match(await readFile(join(project, ".claude", "settings.json"), "utf8"), /claude-pre-tool/);
+    assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "hooks.json"), "utf8"), /antigravity-pre-tool/);
+
+    const removed = await runGg(project, ["configure", "--remove", "claude,antigravity"]);
+    assert.equal(removed.code, 0, removed.stdout + removed.stderr);
+    lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
+    assert.deepEqual(lock.tools, ["codex"]);
+    assert.doesNotMatch(await readFile(join(project, ".claude", "settings.json"), "utf8"), /claude-pre-tool/);
+    await assert.rejects(readFile(join(project, ".agents", "plugins", "vibecode-harness", "hooks.json"), "utf8"));
+    assert.match(await readFile(join(project, "CLAUDE.md"), "utf8"), /vibecode-harness/);
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
+
+test("init preserves an existing Antigravity plugin for manual review", async () => {
+  const project = await mkdtemp(join(tmpdir(), "vibecode-harness-antigravity-existing-"));
+  const plugin = join(project, ".agents", "plugins", "vibecode-harness");
+  try {
+    await mkdir(plugin, { recursive: true });
+    await writeFile(join(plugin, "plugin.json"), "{\"name\":\"existing-plugin\"}\n");
+    const init = await runGg(project, ["init", "--tools", "antigravity", "--runtime", "typescript_web", "--level", "L1"]);
+    assert.equal(init.code, 0, init.stdout + init.stderr);
+    assert.match(init.stdout, /existing_plugin_preserved/);
+    assert.match(await readFile(join(plugin, "plugin.json"), "utf8"), /existing-plugin/);
+    const doctor = await runGg(project, ["doctor"]);
+    assert.match(doctor.stdout, /"google_antigravity": "repair_required"/);
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
 });
 
 test("init creates an opt-in CI gate without overwriting project workflows", async () => {
@@ -96,7 +159,8 @@ test("init creates an opt-in CI gate without overwriting project workflows", asy
     },
     async (project) => {
       const workflow = await readFile(join(project, ".github", "workflows", "vibecode-harness.yml"), "utf8");
-      assert.match(workflow, /vibecode-approved/);
+      assert.match(workflow, /ubuntu-latest/);
+      assert.match(workflow, /actions\/setup-node@v4/);
       assert.match(workflow, /gg\.mjs verify/);
     }
   );
@@ -187,7 +251,7 @@ test("verify blocks a failing user test", async () => {
 
 test("verify does not let a skipped checker pass", async () => {
   await withProject(makeProject, async (project) => {
-    const result = await runGg(project, ["verify", "--skip-checker", "--run-tests"]);
+    const result = await runGg(project, ["verify", "--local-checker", "--skip-checker", "--run-tests"]);
     assert.equal(result.code, 41, result.stdout + result.stderr);
     assert.match(result.stdout, /incomplete/);
     assert.match(result.stdout, /통과한 것으로 처리하지 않습니다/);
@@ -223,7 +287,7 @@ test("verify treats an empty source scan as incomplete", async () => {
       return project;
     },
     async (project) => {
-      const result = await runGg(project, ["verify", "--no-tests"]);
+      const result = await runGg(project, ["verify", "--local-checker", "--no-tests"]);
       assert.equal(result.code, 41, result.stdout + result.stderr);
       assert.match(result.stdout, /incomplete/);
     }
@@ -235,7 +299,7 @@ test("verify allows a complete clean scan to continue development but keeps rele
     const checker = await fakeCheckerEnvironment();
     try {
       await writeFakeChecker(project);
-      const result = await runGg(project, ["verify", "--run-tests"], checker.env);
+      const result = await runGg(project, ["verify", "--local-checker", "--run-tests"], checker.env);
       assert.equal(result.code, 0, result.stdout + result.stderr);
       assert.match(result.stdout, /review_required/);
       assert.match(result.stdout, /커밋은 가능하지만/);
@@ -256,7 +320,7 @@ test("verify treats declared dependencies without a completed audit as incomplet
     });
     try {
       await writeFakeChecker(project);
-      const result = await runGg(project, ["verify", "--run-tests"], checker.env);
+      const result = await runGg(project, ["verify", "--local-checker", "--run-tests"], checker.env);
       assert.equal(result.code, 41, result.stdout + result.stderr);
       assert.match(result.stdout, /의존성 감사를 완료하지 못했습니다/);
     } finally {

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "general": {
+      "display_name": "기본 호환형 (Python · JavaScript · TypeScript)",
+      "allowed_languages": ["python", "javascript", "typescript"]
+    },
+    "typescript_web": {
+      "display_name": "TypeScript 웹",
+      "allowed_languages": ["javascript", "typescript"]
+    },
+    "typescript_supabase": {
+      "display_name": "TypeScript · Supabase 엄격형",
+      "allowed_languages": ["typescript"],
+      "allowed_declarative_extensions": [".sql", ".json", ".yaml", ".yml", ".toml", ".html", ".css"]
+    },
+    "python_internal": {
+      "display_name": "Python 업무자동화",
+      "allowed_languages": ["python"]
+    }
+  }
+}

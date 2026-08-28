@@ -1,0 +1,41 @@
+name: Release preflight
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to validate (for example v0.2.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate source and release tag
+        shell: pwsh
+        run: node scripts/release-preflight.mjs --tag "$env:RELEASE_TAG"
+      - name: Run harness regression tests
+        run: npm test
+      - name: Verify policy consistency
+        run: npm run validate:design
+      - name: Verify policy mutation rejection
+        run: npm run test:design
+
+      # This workflow never signs or publishes an installer. Those actions require
+      # institutional approval, an external signing environment, and a completed
+      # release approval record.

@@ -38,6 +38,14 @@ test("Claude hook blocks direct package installation", async () => {
   assert.match(result.stderr, /gg package check/);
 });
 
+test("Claude hook blocks npx package execution but permits an installed local binary", async () => {
+  const npx = await invoke({ tool_input: { command: "npx create-vite@latest" } });
+  assert.notEqual(npx.code, 0);
+  assert.match(npx.stderr, /gg package check/);
+  const local = await invoke({ tool_input: { command: "npx --no-install vite --version" } });
+  assert.equal(local.code, 0, local.stderr);
+});
+
 test("Claude hook blocks Windows package command variants", async () => {
   const npm = await invoke({ tool_name: "Bash", tool_input: { command: "npm.cmd install firebase" } });
   assert.equal(npm.code, 2, npm.stderr);

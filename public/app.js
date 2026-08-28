@@ -8,7 +8,19 @@ const elements = {
   download: document.querySelector("#download-link"),
   detail: document.querySelector("#installer-detail"),
   guide: document.querySelector("#guide-link"),
-  repository: document.querySelector("#repository-link")
+  repository: document.querySelector("#repository-link"),
+  supportedTools: document.querySelector("#supported-tools"),
+  projectSetup: document.querySelector("#project-setup"),
+  updatePolicy: document.querySelector("#update-policy")
+};
+
+const TOOL_LABELS = {
+  codex: "Codex",
+  "claude-code": "Claude Code",
+  "google-antigravity": "Google Antigravity",
+  "claude-desktop": "Claude Desktop (Git gate)",
+  "chatgpt-codex-desktop": "ChatGPT/Codex Desktop (Git gate)",
+  "lovable-github": "Lovable + GitHub PR gate"
 };
 
 function setDownloadUnavailable(text) {
@@ -25,6 +37,13 @@ function renderRelease(index) {
   elements.message.textContent = index.message || "승인된 설치 파일 정보를 확인하세요.";
   elements.guide.href = index.support?.installation_guide || elements.guide.href;
   elements.repository.href = index.support?.repository_url || elements.repository.href;
+  const capabilities = index.capabilities || {};
+  const tools = Array.isArray(capabilities.supported_tools) ? capabilities.supported_tools : [];
+  elements.supportedTools.textContent = tools.length
+    ? `지원: ${tools.map((tool) => TOOL_LABELS[tool] || tool).join(" · ")}`
+    : "지원 도구 정보가 아직 등록되지 않았습니다.";
+  elements.projectSetup.textContent = capabilities.project_setup || "프로젝트 설정 정보가 아직 등록되지 않았습니다.";
+  elements.updatePolicy.textContent = capabilities.update_policy || "업데이트 정보가 아직 등록되지 않았습니다.";
 
   const installer = index.installer;
   const ready = index.status === "installer_published"

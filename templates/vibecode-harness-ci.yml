@@ -10,11 +10,14 @@ permissions:
 
 jobs:
   verify:
-    # 기관 승인 Windows runner에는 Node.js, gvskb와 승인된 하네스 번들이 있어야 합니다.
-    runs-on: [self-hosted, Windows, vibecode-approved]
+    # The final checker runs in the portal. This workflow enforces only the
+    # local language/project policy and project tests before a branch is merged.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Verify project policy, tests and checker evidence
-        shell: pwsh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify project language policy and tests
         run: node .vibecode-harness/bin/gg.mjs verify --project . --run-tests

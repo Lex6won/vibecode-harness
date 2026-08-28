@@ -1,11 +1,20 @@
 #!/usr/bin/env node
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve, relative, sep } from "node:path";
 import { spawn } from "node:child_process";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { installationState, verifyBundle } from "../lib/release-integrity.mjs";
+import {
+  ALL_CODE_EXTENSIONS,
+  getPolicyProfile,
+  hasAllowedImplementationSource,
+  languageFailureForPath,
+  policyProfileForRuntime,
+  runtimeFailureForCommand
+} from "../lib/policy-engine.mjs";
 
 const EXIT = Object.freeze({
   OK: 0,
@@ -22,20 +31,39 @@ const EXIT = Object.freeze({
 const HARNESS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const POLICY_PATH = join(HARNESS_ROOT, "shared", "harness-core.yaml");
 const INSTITUTION_PROFILE_PATH = join(HARNESS_ROOT, "shared", "institution-profile.yaml");
+const POLICY_PROFILES_PATH = join(HARNESS_ROOT, "shared", "policy-profiles.json");
 const ROOT_PACKAGE_POLICY_PATH = join(HARNESS_ROOT, "shared", "references", "package-policy.json");
 const CODEX_TEMPLATE_PATH = join(HARNESS_ROOT, "adapters", "codex", "AGENTS.template.md");
 const CLAUDE_TEMPLATE_PATH = join(HARNESS_ROOT, "adapters", "claude-code", "CLAUDE.template.md");
+const ANTIGRAVITY_ADAPTER_PATH = join(HARNESS_ROOT, "adapters", "antigravity");
 const CI_TEMPLATE_PATH = join(HARNESS_ROOT, "templates", "vibecode-harness-ci.yml");
 const TRUST_PATH = join(HARNESS_ROOT, "shared", "trust", "approved-signers.json");
 const RELEASE_INTEGRITY_PATH = join(HARNESS_ROOT, "lib", "release-integrity.mjs");
+const POLICY_ENGINE_PATH = join(HARNESS_ROOT, "lib", "policy-engine.mjs");
 const BUNDLED_CHECKER_PATH = join(HARNESS_ROOT, "checker", process.platform === "win32" ? "gvskb.exe" : "gvskb");
 const BUNDLED_PYTHON_PATH = join(HARNESS_ROOT, "runtime", process.platform === "win32" ? "python.exe" : "python");
+// Kept for legacy diagnostic wording; profile-aware validation below is authoritative.
 const BLOCKED_EXTENSIONS = new Map([
   [".java", "Java"], [".go", "Go"], [".php", "PHP"], [".rb", "Ruby"],
   [".cs", "C#"], [".rs", "Rust"]
 ]);
 const IGNORED_DIRECTORIES = new Set([".git", ".githooks", ".vibecode-harness", "node_modules", ".venv", "venv", ".check-reports", "evidence", "dist", "build", "coverage"]);
-const SOURCE_EXTENSIONS = new Set([".py", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"]);
+const TOOL_NAMES = Object.freeze({
+  codex: "codex",
+  claude: "claude-code",
+  antigravity: "google-antigravity",
+  "claude-desktop": "claude-desktop",
+  "chatgpt-desktop": "chatgpt-codex-desktop",
+  "codex-desktop": "chatgpt-codex-desktop",
+  "chatgpt-codex-desktop": "chatgpt-codex-desktop",
+  lovable: "lovable-github",
+  "lovable-github": "lovable-github"
+});
+const GUIDANCE_ADAPTERS = Object.freeze({
+  "claude-desktop": Object.freeze({ source: join(HARNESS_ROOT, "adapters", "claude-desktop", "PROJECT-SUPPORT.md"), target: ".vibecode-harness/tool-guides/claude-desktop.md", status: "git_gate_required" }),
+  "chatgpt-codex-desktop": Object.freeze({ source: join(HARNESS_ROOT, "adapters", "chatgpt-codex-desktop", "PROJECT-SUPPORT.md"), target: ".vibecode-harness/tool-guides/chatgpt-codex-desktop.md", status: "git_gate_required" }),
+  "lovable-github": Object.freeze({ source: join(HARNESS_ROOT, "adapters", "lovable-github", "VIBECODE-LOVABLE.md"), target: "VIBECODE-LOVABLE.md", status: "github_pr_gate_required" })
+});
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
@@ -65,7 +93,9 @@ function usage() {
   print(`바이브코드 하네스 실행기
 
 사용법:
-  node bin/gg.mjs init --project <폴더> [--tools codex|claude|both] [--runtime python_internal|node_web|typescript_web] [--level L1|L2|L3] [--ci]
+  node bin/gg.mjs init --project <폴더> [--tools codex|claude|antigravity|both|all|codex,claude] [--runtime python_internal|node_web|typescript_web] [--level L1|L2|L3] [--ci]
+  node bin/gg.mjs init --interactive
+  node bin/gg.mjs configure --project <folder> [--tools codex,claude,antigravity] [--remove codex,claude,antigravity]
   node bin/gg.mjs doctor [--project <폴더>]
   node bin/gg.mjs start --project <폴더> --brief <업무 설명>
   node bin/gg.mjs design --project <폴더> [--database yes|no] [--admin yes|no] [--external-api yes|no] [--confirm]
@@ -221,8 +251,8 @@ function cleanCommand(command) {
   return String(command || "").replace(/\\/g, "/").toLowerCase();
 }
 
-function hasBlockedRuntime(command) {
-  return /(^|[\s;&|])(?:go|java|php|ruby|dotnet|cargo)(?:[\s;&|]|$)/.test(cleanCommand(command));
+function hasBlockedRuntime(command, policyProfile = "general") {
+  return Boolean(runtimeFailureForCommand(policyProfile, cleanCommand(command)));
 }
 
 async function packagePolicy(project) {
@@ -302,27 +332,60 @@ async function policyCheck(project, lock) {
   const failures = [];
   const policySnapshot = join(project, ".vibecode-harness", "policy", "harness-core.yaml");
   const profileSnapshot = join(project, ".vibecode-harness", "policy", "institution-profile.yaml");
+  const policyProfilesSnapshot = join(project, ".vibecode-harness", "policy", "policy-profiles.json");
   const packageSnapshot = join(project, ".vibecode-harness", "policy", "package-policy.json");
-  for (const path of [policySnapshot, profileSnapshot, packageSnapshot]) {
+  for (const path of [policySnapshot, profileSnapshot, policyProfilesSnapshot, packageSnapshot]) {
     if (!(await pathExists(path))) failures.push(`필수 정책 사본이 없습니다: ${relative(project, path)}`);
   }
   if (failures.length) return failures;
   if ((await sha256(policySnapshot)) !== lock.policy_sha256) failures.push("하네스 정책 파일이 초기화 이후 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
   if ((await sha256(profileSnapshot)) !== lock.institution_profile_sha256) failures.push("기관 프로파일이 초기화 이후 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
   if (lock.package_policy_sha256 && (await sha256(packageSnapshot)) !== lock.package_policy_sha256) failures.push("패키지 정책이 초기화 이후 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
+  if (lock.policy_profiles_sha256 && (await sha256(policyProfilesSnapshot)) !== lock.policy_profiles_sha256) failures.push("Language policy profile snapshot changed after initialization. Reapply the approved harness.");
   const localRunner = join(project, ".vibecode-harness", "bin", "gg.mjs");
   if (!(await pathExists(localRunner))) failures.push("프로젝트 실행기 사본이 없습니다. 승인된 하네스를 다시 적용하세요.");
   else if (lock.runner_sha256 && (await sha256(localRunner)) !== lock.runner_sha256) failures.push("프로젝트 실행기 사본이 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
   const localIntegrity = join(project, ".vibecode-harness", "lib", "release-integrity.mjs");
   if (!(await pathExists(localIntegrity))) failures.push("프로젝트 번들 무결성 검증 모듈이 없습니다. 승인된 하네스를 다시 적용하세요.");
   else if (lock.release_integrity_sha256 && (await sha256(localIntegrity)) !== lock.release_integrity_sha256) failures.push("프로젝트 번들 무결성 검증 모듈이 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
+  const localPolicyEngine = join(project, ".vibecode-harness", "lib", "policy-engine.mjs");
+  if (!(await pathExists(localPolicyEngine))) failures.push("Project language policy engine copy is missing. Reapply the approved harness.");
+  else if (lock.policy_engine_sha256 && (await sha256(localPolicyEngine)) !== lock.policy_engine_sha256) failures.push("Project language policy engine changed after initialization. Reapply the approved harness.");
   const localHook = join(project, ".vibecode-harness", "bin", "claude-pre-tool.mjs");
   if (lock.tools?.includes("claude-code")) {
     if (!(await pathExists(localHook))) failures.push("Claude Code 훅 사본이 없습니다. 승인된 하네스를 다시 적용하세요.");
     else if (lock.claude_hook_sha256 && (await sha256(localHook)) !== lock.claude_hook_sha256) failures.push("Claude Code 훅 사본이 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
   }
+  const antigravityHook = join(project, ".vibecode-harness", "bin", "antigravity-pre-tool.mjs");
+  if (lock.tools?.includes("google-antigravity")) {
+    const plugin = join(project, ".agents", "plugins", "vibecode-harness");
+    const hooks = join(plugin, "hooks.json");
+    const rule = join(plugin, "rules", "vibecode-harness.md");
+    const skill = join(plugin, "skills", "vibecode-workflow", "SKILL.md");
+    if (!(await pathExists(antigravityHook))) failures.push("Google Antigravity 훅 사본이 없습니다. 승인된 하네스를 다시 적용하세요.");
+    else if (lock.antigravity_hook_sha256 && (await sha256(antigravityHook)) !== lock.antigravity_hook_sha256) failures.push("Google Antigravity 훅 사본이 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
+    if (!(await pathExists(join(plugin, "plugin.json"))) || !(await pathExists(rule)) || !(await pathExists(skill))) {
+      failures.push("Google Antigravity 프로젝트 플러그인이 불완전합니다. 승인된 하네스를 다시 적용하세요.");
+    } else if (!(await pathExists(hooks)) || !(await readFile(hooks, "utf8")).includes("antigravity-pre-tool.mjs")) {
+      failures.push("Google Antigravity 사전 실행 훅이 적용되지 않았습니다. 승인된 하네스를 다시 적용하세요.");
+    }
+  }
+  for (const tool of Object.keys(GUIDANCE_ADAPTERS)) {
+    if (!lock.tools?.includes(tool)) continue;
+    const adapter = GUIDANCE_ADAPTERS[tool];
+    if (!(await pathExists(join(project, adapter.target)))) failures.push(`Required ${tool} support guidance is missing. Reapply the approved harness.`);
+  }
+  if (lock.tools?.includes(TOOL_NAMES.lovable) && !(await pathExists(join(project, ".github", "workflows", "vibecode-harness.yml")))) {
+    failures.push("Lovable GitHub support requires the VibeCode pull-request policy workflow.");
+  }
+  const policyProfile = lock.policy_profile || policyProfileForRuntime(lock.runtime_profile);
+  if (!getPolicyProfile(policyProfile)) failures.push(`Unknown language policy profile: ${policyProfile}`);
   const files = await listFiles(project);
-  const implementationFiles = files.filter((file) => SOURCE_EXTENSIONS.has(extname(file).toLowerCase()));
+  const implementationFiles = files.filter((file) => hasAllowedImplementationSource(policyProfile, [file]));
+  for (const file of files) {
+    const languageFailure = languageFailureForPath(policyProfile, relative(project, file));
+    if (languageFailure) failures.push(languageFailure);
+  }
   for (const file of files) {
     const extension = extname(file).toLowerCase();
     if (BLOCKED_EXTENSIONS.has(extension)) failures.push(`허용되지 않은 ${BLOCKED_EXTENSIONS.get(extension)} 소스 파일: ${relative(project, file)}`);
@@ -333,7 +396,7 @@ async function policyCheck(project, lock) {
   if (lock.runtime_profile === "node_web") {
     for (const file of implementationFiles) if ([".ts", ".tsx"].includes(extname(file).toLowerCase())) failures.push(`Node.js 트랙에서 TypeScript 구현 파일을 발견했습니다: ${relative(project, file)}`);
   }
-  if (lock.runtime_profile === "typescript_web" && implementationFiles.length && !implementationFiles.some((file) => [".ts", ".tsx"].includes(extname(file).toLowerCase()))) {
+  if (["typescript_web", "typescript_supabase"].includes(lock.runtime_profile) && implementationFiles.length && !implementationFiles.some((file) => [".ts", ".tsx"].includes(extname(file).toLowerCase()))) {
     failures.push("TypeScript 트랙에는 .ts 또는 .tsx 구현 파일이 하나 이상 필요합니다.");
   }
   const packageJson = join(project, "package.json");
@@ -341,13 +404,14 @@ async function policyCheck(project, lock) {
     try {
       const manifest = await readJson(packageJson);
       for (const [name, command] of Object.entries(manifest.scripts || {})) {
+        if (runtimeFailureForCommand(policyProfile, command)) failures.push(`Unsupported runtime invoked by npm script '${name}'`);
         if (hasBlockedRuntime(command)) failures.push(`허용되지 않은 런타임을 호출하는 npm script '${name}'`);
       }
       if (lock.runtime_profile === "python_internal" && Object.keys(manifest.scripts || {}).length > 0) failures.push("Python 트랙에서 package.json 실행 스크립트를 발견했습니다. 트랙을 바꾸거나 예외 검토가 필요합니다.");
     } catch { failures.push("package.json 형식이 올바르지 않습니다."); }
   }
   const pythonIndicators = ["requirements.txt", "pyproject.toml", "Pipfile"];
-  if (lock.runtime_profile === "node_web" || lock.runtime_profile === "typescript_web") {
+  if (["node_web", "typescript_web", "typescript_supabase"].includes(lock.runtime_profile)) {
     for (const item of pythonIndicators) if (await pathExists(join(project, item))) failures.push(`${lock.runtime_profile} 트랙에서 Python 의존성 선언을 발견했습니다: ${item}`);
   }
   if (lock.runtime_profile === "python_internal") {
@@ -372,7 +436,7 @@ async function policyCheck(project, lock) {
 
 async function runtimeCheck(lock) {
   const checks = [];
-  if (lock.runtime_profile === "node_web" || lock.runtime_profile === "typescript_web") {
+  if (["node_web", "typescript_web", "typescript_supabase"].includes(lock.runtime_profile)) {
     const result = await run(process.execPath, ["--version"]);
     const major = Number((result.stdout.match(/v(\d+)/) || [])[1]);
     if (!Number.isInteger(major) || major < 22) checks.push(`Node.js 22 이상이 필요합니다. 현재: ${result.stdout.trim() || "확인 불가"}`);
@@ -436,7 +500,7 @@ async function runChecker(project, lock, env = process.env) {
   if (!["developer_install", "verified"].includes(bundle.status)) return { status: "incomplete", reason: "설치된 승인 번들의 무결성을 확인할 수 없습니다. 공식 복구 설치 후 다시 시도하세요.", bundle };
   const checker = await checkerCommand(env);
   if (!checker) return { status: "incomplete", reason: "vibecode-checker(gvskb)를 찾을 수 없습니다." };
-  const sourceFiles = (await listFiles(project)).filter((file) => SOURCE_EXTENSIONS.has(extname(file).toLowerCase()));
+  const sourceFiles = (await listFiles(project)).filter((file) => ALL_CODE_EXTENSIONS.has(extname(file).toLowerCase()));
   if (sourceFiles.length === 0) return { status: "incomplete", reason: "지원되는 구현 소스 파일이 없습니다. 지침·문서 파일만으로는 점검을 통과할 수 없습니다." };
   const profileMap = {
     python_internal: "internal-db-query",
@@ -558,13 +622,90 @@ async function bundleCommand(options) {
   throw new Error("지원하는 bundle 명령은 verify 또는 status입니다.");
 }
 
+function selectedTools(value) {
+  const input = String(value || "both").trim().toLowerCase();
+  if (input === "both") return [TOOL_NAMES.codex, TOOL_NAMES.claude];
+  if (input === "all") return [TOOL_NAMES.codex, TOOL_NAMES.claude, TOOL_NAMES.antigravity];
+  const tokens = input.split(",").map((token) => token.trim()).filter(Boolean);
+  if (!tokens.length) throw new Error("--tools에 하나 이상의 AI 도구를 지정하세요.");
+  const tools = tokens.map((token) => TOOL_NAMES[token]);
+  if (tools.some((tool) => !tool)) {
+    throw new Error("--tools는 codex, claude, antigravity, both, all 또는 쉼표로 구분한 조합이어야 합니다.");
+  }
+  return [...new Set(tools)];
+}
+
+function includesTool(tools, name) {
+  return tools.includes(name);
+}
+
+async function applyAntigravityAdapter(project) {
+  const destination = join(project, ".agents", "plugins", "vibecode-harness");
+  if (await pathExists(destination)) return "existing_plugin_preserved";
+  await mkdir(dirname(destination), { recursive: true });
+  await cp(ANTIGRAVITY_ADAPTER_PATH, destination, { recursive: true, force: false, errorOnExist: true });
+  return "created";
+}
+
+async function applyGuidanceAdapter(project, tool) {
+  const adapter = GUIDANCE_ADAPTERS[tool];
+  if (!adapter) return "not_applicable";
+  const destination = join(project, adapter.target);
+  if (await pathExists(destination)) return "existing_guidance_preserved";
+  await mkdir(dirname(destination), { recursive: true });
+  await cp(adapter.source, destination);
+  return adapter.status;
+}
+
+async function removeGuidanceAdapter(project, tool, managedAdapters) {
+  const adapter = GUIDANCE_ADAPTERS[tool];
+  if (!adapter) return "not_applicable";
+  const ownershipKey = `guidance:${tool}`;
+  const destination = join(project, adapter.target);
+  const expectedHash = managedAdapters?.[ownershipKey];
+  if (typeof expectedHash !== "string" || !await pathExists(destination)) return "existing_guidance_preserved";
+  if ((await sha256(destination)) !== expectedHash) return "modified_guidance_preserved";
+  if (await pathExists(destination)) await rm(destination, { force: true });
+  return "removed";
+}
+
+async function interactiveInitCommand(options) {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error("--interactive는 사용자가 응답할 수 있는 터미널에서 실행해야 합니다.");
+  }
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const project = options.project && options.project !== true
+      ? options.project
+      : await prompt.question(`프로젝트 폴더 [${process.cwd()}]: `);
+    const tools = options.tools && options.tools !== true
+      ? options.tools
+      : await prompt.question("AI 도구 (codex, claude, antigravity, all) [all]: ");
+    const runtime = options.runtime && options.runtime !== true
+      ? options.runtime
+      : await prompt.question("프로젝트 유형 (typescript_web, node_web, python_internal) [typescript_web]: ");
+    const level = options.level && options.level !== true
+      ? options.level
+      : await prompt.question("점검 수준 (L1, L2, L3) [L2]: ");
+    return initCommand({
+      ...options,
+      project: project || process.cwd(),
+      tools: tools || "all",
+      runtime: runtime || "typescript_web",
+      level: level || "L2"
+    });
+  } finally {
+    prompt.close();
+  }
+}
+
 async function initCommand(options) {
   const project = projectPath(options);
-  const tools = options.tools || "both";
+  const tools = selectedTools(options.tools || "both");
   const runtime = options.runtime || "typescript_web";
   const level = options.level || "L2";
-  if (!['codex', 'claude', 'both'].includes(tools)) throw new Error("--tools는 codex, claude, both 중 하나여야 합니다.");
-  if (!['python_internal', 'node_web', 'typescript_web'].includes(runtime)) throw new Error("허용되지 않은 --runtime 값입니다.");
+  if (!['python_internal', 'node_web', 'typescript_web', 'typescript_supabase'].includes(runtime)) throw new Error("허용되지 않은 --runtime 값입니다.");
+  if (includesTool(tools, TOOL_NAMES.lovable) && runtime !== "typescript_supabase") throw new Error("Lovable GitHub projects require the typescript_supabase runtime profile.");
   if (!['L1', 'L2', 'L3'].includes(level)) throw new Error("--level은 L1, L2, L3 중 하나여야 합니다.");
   await mkdir(project, { recursive: true });
   const harnessDir = join(project, ".vibecode-harness");
@@ -575,39 +716,50 @@ async function initCommand(options) {
   await mkdir(join(harnessDir, "lib"), { recursive: true });
   await cp(POLICY_PATH, join(harnessDir, "policy", "harness-core.yaml"));
   await cp(INSTITUTION_PROFILE_PATH, join(harnessDir, "policy", "institution-profile.yaml"));
+  await cp(POLICY_PROFILES_PATH, join(harnessDir, "policy", "policy-profiles.json"));
   await cp(ROOT_PACKAGE_POLICY_PATH, join(harnessDir, "policy", "package-policy.json"));
+  await cp(join(HARNESS_ROOT, "adapters"), join(harnessDir, "adapters"), { recursive: true });
   await cp(join(HARNESS_ROOT, "bin", "gg.mjs"), join(harnessDir, "bin", "gg.mjs"));
   await cp(join(HARNESS_ROOT, "bin", "claude-pre-tool.mjs"), join(harnessDir, "bin", "claude-pre-tool.mjs"));
+  await cp(join(HARNESS_ROOT, "bin", "antigravity-pre-tool.mjs"), join(harnessDir, "bin", "antigravity-pre-tool.mjs"));
   await cp(RELEASE_INTEGRITY_PATH, join(harnessDir, "lib", "release-integrity.mjs"));
+  await cp(POLICY_ENGINE_PATH, join(harnessDir, "lib", "policy-engine.mjs"));
   const lock = {
-    schema_version: 1,
-    harness_version: "0.1.0",
+    schema_version: 3,
+    harness_version: "0.2.0",
     project_id: randomUUID(),
     created_at: new Date().toISOString(),
     level,
     runtime_profile: runtime,
-    tools: tools === "both" ? ["codex", "claude-code"] : [tools === "claude" ? "claude-code" : "codex"],
-    allowed_languages: ["python", "javascript", "typescript"],
+    policy_profile: policyProfileForRuntime(runtime),
+    tools,
+    allowed_languages: getPolicyProfile(policyProfileForRuntime(runtime)).allowed_languages,
     policy_sha256: await sha256(join(harnessDir, "policy", "harness-core.yaml")),
     institution_profile_sha256: await sha256(join(harnessDir, "policy", "institution-profile.yaml")),
+    policy_profiles_sha256: await sha256(join(harnessDir, "policy", "policy-profiles.json")),
     package_policy_sha256: await sha256(join(harnessDir, "policy", "package-policy.json")),
     runner_sha256: await sha256(join(harnessDir, "bin", "gg.mjs")),
     release_integrity_sha256: await sha256(join(harnessDir, "lib", "release-integrity.mjs")),
+    policy_engine_sha256: await sha256(join(harnessDir, "lib", "policy-engine.mjs")),
     claude_hook_sha256: await sha256(join(harnessDir, "bin", "claude-pre-tool.mjs")),
+    antigravity_hook_sha256: await sha256(join(harnessDir, "bin", "antigravity-pre-tool.mjs")),
+    managed_adapters: {},
     checker_machine_verdict: "pending_upstream_machine_verdict"
   };
   await writeJson(lockPath, lock);
-  if (tools === "codex" || tools === "both") {
+  if (includesTool(tools, TOOL_NAMES.codex)) {
     if (!(await pathExists(join(project, "AGENTS.md")))) await cp(CODEX_TEMPLATE_PATH, join(project, "AGENTS.md"));
     await mkdir(join(project, ".codex"), { recursive: true });
     await writeFile(join(project, ".codex", "vibecode-harness.md"), "Use AGENTS.md and run gg verify before completion.\n", "utf8");
+    lock.managed_adapters.codex_companion = true;
   }
   let claudeSettingsStatus = "not_selected";
-  if (tools === "claude" || tools === "both") {
+  if (includesTool(tools, TOOL_NAMES.claude)) {
     if (!(await pathExists(join(project, "CLAUDE.md")))) await cp(CLAUDE_TEMPLATE_PATH, join(project, "CLAUDE.md"));
     await mkdir(join(project, ".claude"), { recursive: true });
     await writeFile(join(project, ".claude", "vibecode-harness.md"), "Use CLAUDE.md and run gg verify before completion.\n", "utf8");
     const claudeSettingsPath = join(project, ".claude", "settings.json");
+    lock.managed_adapters.claude_companion = true;
     const hookEntry = { type: "command", command: "node .vibecode-harness/bin/claude-pre-tool.mjs" };
     if (!(await pathExists(claudeSettingsPath))) {
       await writeJson(claudeSettingsPath, { hooks: { PreToolUse: [{ matcher: "Write|Edit|MultiEdit|Bash", hooks: [hookEntry] }] } });
@@ -627,6 +779,17 @@ async function initCommand(options) {
         claudeSettingsStatus = "manual_required_invalid_settings";
       }
     }
+  }
+  let antigravityStatus = "not_selected";
+  if (includesTool(tools, TOOL_NAMES.antigravity)) {
+    antigravityStatus = await applyAntigravityAdapter(project);
+    lock.managed_adapters.antigravity_plugin = antigravityStatus === "created";
+  }
+  const guidanceAdapters = {};
+  for (const tool of tools.filter((item) => GUIDANCE_ADAPTERS[item])) {
+    const status = await applyGuidanceAdapter(project, tool);
+    guidanceAdapters[tool] = status;
+    lock.managed_adapters[`guidance:${tool}`] = status !== "existing_guidance_preserved" ? await sha256(join(project, GUIDANCE_ADAPTERS[tool].target)) : null;
   }
   await mkdir(join(project, "evidence"), { recursive: true });
   const gitignorePath = join(project, ".gitignore");
@@ -657,7 +820,7 @@ async function initCommand(options) {
     }
   }
   let ci = "not_requested";
-  if (options.ci) {
+  if (options.ci || includesTool(tools, TOOL_NAMES.lovable)) {
     const workflowPath = join(project, ".github", "workflows", "vibecode-harness.yml");
     if (await pathExists(workflowPath)) ci = "existing_workflow_preserved";
     else {
@@ -666,8 +829,135 @@ async function initCommand(options) {
       ci = "created_requires_approved_windows_runner";
     }
   }
-  await writeReceipt(project, "init", { kind: "harness_init", runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus });
-  print({ status: "initialized", project, runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, next: "gg doctor --project <프로젝트 폴더>" });
+  await writeJson(lockPath, lock);
+  await writeReceipt(project, "init", { kind: "harness_init", runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, antigravity_plugin: antigravityStatus, guidance_adapters: guidanceAdapters });
+  print({ status: "initialized", project, runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, antigravity_plugin: antigravityStatus, guidance_adapters: guidanceAdapters, next: "gg doctor --project <프로젝트 폴더>" });
+}
+
+async function configureCommand(options) {
+  const project = projectPath(options);
+  const lockRecord = await getLock(project);
+  const lock = lockRecord.value;
+  if (!options.tools && !options.remove) throw new Error("configure requires --tools or --remove.");
+
+  const current = new Set(lock.tools || []);
+  const desired = options.tools ? new Set(selectedTools(options.tools)) : new Set(current);
+  if (options.remove) for (const tool of selectedTools(options.remove)) desired.delete(tool);
+  if (!desired.size) throw new Error("At least one AI tool must remain selected for a managed project.");
+  if (desired.has(TOOL_NAMES.lovable) && lock.runtime_profile !== "typescript_supabase") throw new Error("Lovable GitHub support requires an existing typescript_supabase project. Create or migrate the project with that policy profile first.");
+
+  const harnessDir = join(project, ".vibecode-harness");
+  const changes = { added: [], removed: [], preserved: [] };
+  lock.managed_adapters = lock.managed_adapters || {};
+
+  if (desired.has(TOOL_NAMES.codex) && !current.has(TOOL_NAMES.codex)) {
+    const agents = join(project, "AGENTS.md");
+    if (!(await pathExists(agents))) await cp(CODEX_TEMPLATE_PATH, agents);
+    await mkdir(join(project, ".codex"), { recursive: true });
+    await writeFile(join(project, ".codex", "vibecode-harness.md"), "Use AGENTS.md and run gg verify before completion.\n", "utf8");
+    lock.managed_adapters.codex_companion = true;
+    changes.added.push("codex");
+  }
+
+  if (desired.has(TOOL_NAMES.claude) && !current.has(TOOL_NAMES.claude)) {
+    const claude = join(project, "CLAUDE.md");
+    if (!(await pathExists(claude))) await cp(CLAUDE_TEMPLATE_PATH, claude);
+    await mkdir(join(project, ".claude"), { recursive: true });
+    await writeFile(join(project, ".claude", "vibecode-harness.md"), "Use CLAUDE.md and run gg verify before completion.\n", "utf8");
+    const settingsPath = join(project, ".claude", "settings.json");
+    const hookEntry = { type: "command", command: "node .vibecode-harness/bin/claude-pre-tool.mjs" };
+    let settings = { hooks: { PreToolUse: [] } };
+    if (await pathExists(settingsPath)) {
+      try {
+        await mkdir(join(harnessDir, "backups"), { recursive: true });
+        await cp(settingsPath, join(harnessDir, "backups", `claude-settings-before-configure-${Date.now()}.json`));
+        settings = await readJson(settingsPath);
+      } catch { throw new Error("Existing Claude Code settings.json is invalid. Fix it before configuring the harness."); }
+    }
+    settings.hooks = settings.hooks || {};
+    settings.hooks.PreToolUse = Array.isArray(settings.hooks.PreToolUse) ? settings.hooks.PreToolUse : [];
+    const exists = settings.hooks.PreToolUse.some((entry) => Array.isArray(entry.hooks) && entry.hooks.some((hook) => hook.command === hookEntry.command));
+    if (!exists) settings.hooks.PreToolUse.push({ matcher: "Write|Edit|MultiEdit|Bash", hooks: [hookEntry] });
+    await writeJson(settingsPath, settings);
+    lock.managed_adapters.claude_companion = true;
+    changes.added.push("claude-code");
+  }
+
+  if (desired.has(TOOL_NAMES.antigravity) && !current.has(TOOL_NAMES.antigravity)) {
+    const status = await applyAntigravityAdapter(project);
+    lock.managed_adapters.antigravity_plugin = status === "created";
+    changes.added.push("google-antigravity");
+    if (status !== "created") changes.preserved.push("google-antigravity-existing-plugin");
+  }
+
+  for (const tool of Object.keys(GUIDANCE_ADAPTERS)) {
+    if (!desired.has(tool) || current.has(tool)) continue;
+    const status = await applyGuidanceAdapter(project, tool);
+    lock.managed_adapters[`guidance:${tool}`] = status !== "existing_guidance_preserved" ? await sha256(join(project, GUIDANCE_ADAPTERS[tool].target)) : null;
+    changes.added.push(tool);
+    if (status === "existing_guidance_preserved") changes.preserved.push(`${tool}-guidance`);
+  }
+  if (desired.has(TOOL_NAMES.lovable) && !current.has(TOOL_NAMES.lovable)) {
+    const workflowPath = join(project, ".github", "workflows", "vibecode-harness.yml");
+    if (!(await pathExists(workflowPath))) {
+      await mkdir(dirname(workflowPath), { recursive: true });
+      await cp(CI_TEMPLATE_PATH, workflowPath);
+    } else {
+      changes.preserved.push("lovable-existing-ci-workflow");
+    }
+  }
+
+  if (!desired.has(TOOL_NAMES.codex) && current.has(TOOL_NAMES.codex)) {
+    const companion = join(project, ".codex", "vibecode-harness.md");
+    if (lock.managed_adapters.codex_companion && await pathExists(companion)) await rm(companion, { force: true });
+    else changes.preserved.push("codex-companion");
+    changes.preserved.push("AGENTS.md");
+    delete lock.managed_adapters.codex_companion;
+    changes.removed.push("codex");
+  }
+
+  if (!desired.has(TOOL_NAMES.claude) && current.has(TOOL_NAMES.claude)) {
+    const settingsPath = join(project, ".claude", "settings.json");
+    if (await pathExists(settingsPath)) {
+      try {
+        const settings = await readJson(settingsPath);
+        await mkdir(join(harnessDir, "backups"), { recursive: true });
+        await cp(settingsPath, join(harnessDir, "backups", `claude-settings-before-remove-${Date.now()}.json`));
+        const entries = Array.isArray(settings.hooks?.PreToolUse) ? settings.hooks.PreToolUse : [];
+        settings.hooks = settings.hooks || {};
+        settings.hooks.PreToolUse = entries.map((entry) => ({ ...entry, hooks: Array.isArray(entry.hooks) ? entry.hooks.filter((hook) => hook.command !== "node .vibecode-harness/bin/claude-pre-tool.mjs") : [] })).filter((entry) => entry.hooks.length);
+        await writeJson(settingsPath, settings);
+      } catch { changes.preserved.push("claude-settings-invalid"); }
+    }
+    const companion = join(project, ".claude", "vibecode-harness.md");
+    if (lock.managed_adapters.claude_companion && await pathExists(companion)) await rm(companion, { force: true });
+    else changes.preserved.push("claude-companion");
+    changes.preserved.push("CLAUDE.md");
+    delete lock.managed_adapters.claude_companion;
+    changes.removed.push("claude-code");
+  }
+
+  if (!desired.has(TOOL_NAMES.antigravity) && current.has(TOOL_NAMES.antigravity)) {
+    const plugin = join(project, ".agents", "plugins", "vibecode-harness");
+    if (lock.managed_adapters.antigravity_plugin && await pathExists(plugin)) await rm(plugin, { recursive: true, force: false });
+    else changes.preserved.push("google-antigravity-plugin");
+    delete lock.managed_adapters.antigravity_plugin;
+    changes.removed.push("google-antigravity");
+  }
+
+  for (const tool of Object.keys(GUIDANCE_ADAPTERS)) {
+    if (desired.has(tool) || !current.has(tool)) continue;
+    const status = await removeGuidanceAdapter(project, tool, lock.managed_adapters);
+    if (status !== "removed") changes.preserved.push(`${tool}-guidance`);
+    delete lock.managed_adapters[`guidance:${tool}`];
+    changes.removed.push(tool);
+  }
+
+  lock.tools = [...desired];
+  lock.updated_at = new Date().toISOString();
+  await writeJson(lockRecord.path, lock);
+  const receipt = await writeReceipt(project, "configure", { kind: "harness_configure", tools: lock.tools, changes });
+  print({ status: "configured", project, tools: lock.tools, changes, receipt, next: "gg doctor --project <project-folder>" });
 }
 
 async function doctorCommand(options) {
@@ -693,6 +983,23 @@ async function doctorCommand(options) {
     } catch { /* reported below */ }
     adapters.claude_code = (await pathExists(claude)) && hookApplied ? "applied" : "repair_required";
   }
+  if (lock?.value.tools.includes("google-antigravity")) {
+    const plugin = join(project, ".agents", "plugins", "vibecode-harness");
+    const manifest = join(plugin, "plugin.json");
+    const hooks = join(plugin, "hooks.json");
+    const rule = join(plugin, "rules", "vibecode-harness.md");
+    const skill = join(plugin, "skills", "vibecode-workflow", "SKILL.md");
+    let hookApplied = false;
+    try { hookApplied = (await readFile(hooks, "utf8")).includes("antigravity-pre-tool.mjs"); } catch { /* reported below */ }
+    adapters.google_antigravity = (await pathExists(manifest)) && (await pathExists(rule)) && (await pathExists(skill)) && hookApplied
+      ? "applied"
+      : "repair_required";
+  }
+  for (const tool of Object.keys(GUIDANCE_ADAPTERS)) {
+    if (!lock?.value.tools.includes(tool)) continue;
+    const adapter = GUIDANCE_ADAPTERS[tool];
+    adapters[tool] = await pathExists(join(project, adapter.target)) ? adapter.status : "repair_required";
+  }
   let gitHook = "not_applicable";
   if (git && await pathExists(join(project, ".git"))) {
     const config = await run("git", ["config", "--get", "core.hooksPath"], { cwd: project });
@@ -712,7 +1019,7 @@ async function doctorCommand(options) {
   };
   if (lock) result.policy_failures = await policyCheck(project, lock.value);
   print(result);
-  if (!lock || !checker) process.exitCode = EXIT.CHECKER_INCOMPLETE;
+  if (!lock) process.exitCode = EXIT.CHECKER_INCOMPLETE;
 }
 
 async function startCommand(options) {
@@ -813,6 +1120,21 @@ async function verifyCommand(options) {
     process.exitCode = EXIT.TEST;
     return;
   }
+  if (!options["local-checker"]) {
+    const checker = {
+      status: "server_scan_required",
+      reason: "Local language and project-policy checks passed. Request the final security scan from the portal after development is complete."
+    };
+    const receipt = await writeReceipt(project, "verify", {
+      kind: "verify",
+      status: "ready_for_portal_scan",
+      test,
+      checker,
+      final_release_decision: "portal_scan_required"
+    });
+    print({ status: "ready_for_portal_scan", test, checker, receipt, next: "Complete the final server-side security scan in the portal before release." });
+    return;
+  }
   const checker = options["skip-checker"] ? { status: "incomplete", reason: "체커를 생략했습니다. 보안 검증을 통과한 것으로 처리하지 않습니다." } : await runChecker(project, lock);
   const status = checker.status === "blocked" ? "blocked" : checker.status === "incomplete" ? "incomplete" : "review_required";
   const receipt = await writeReceipt(project, "verify", { kind: "verify", status, test, checker, final_release_decision: checker.status === "review_required" ? "checker_review_required" : "not_eligible" });
@@ -842,9 +1164,11 @@ async function releaseCommand(options) {
 
 async function main() {
   const { command, options } = parseArgs(process.argv.slice(2));
-  if (!command || command === "help" || options.help) return usage();
+  if (!command || command === "help" || command === "--help" || options.help) return usage();
   try {
-    if (command === "init") await initCommand(options);
+    if (command === "init" && options.interactive) await interactiveInitCommand(options);
+    else if (command === "init") await initCommand(options);
+    else if (command === "configure") await configureCommand(options);
     else if (command === "doctor") await doctorCommand(options);
     else if (command === "start") await startCommand(options);
     else if (command === "design") await designCommand(options);

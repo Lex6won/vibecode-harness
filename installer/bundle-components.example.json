@@ -1,6 +1,4 @@
 {
-  "harness": { "path": "bin/gg.mjs", "version": "0.1.0" },
-  "node_runtime": { "path": "runtime/node.exe", "version": "22.0.0" },
-  "python_runtime": { "path": "runtime/python.exe", "version": "3.13.0" },
-  "checker": { "path": "checker/gvskb.exe", "version": "0.3.0" }
+  "harness": { "path": "bin/gg.mjs", "version": "0.2.0" },
+  "node_runtime": { "path": "runtime/node.exe", "version": "22.0.0" }
 }

@@ -1,5 +1,12 @@
 {
   "schema_version": 1,
   "purpose": "기관 운영 번들 검증용 공개키 목록입니다. 개인키는 저장소·포털·사용자 PC에 저장하지 않습니다.",
-  "signers": []
+  "signers": [
+    {
+      "key_id": "gyeonggi-demo-pem-20260828",
+      "status": "active",
+      "scope": "demonstration-only",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA8q8Pq0/nKYStol4Y/JgeoRrftqzK7aKU+8V99gMZ6jI=\n-----END PUBLIC KEY-----\n"
+    }
+  ]
 }
