@@ -101,7 +101,7 @@ PowerShell에서 아래처럼 하네스 명령 위치를 변수로 지정합니�
 ```powershell
 $gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
 
-& $gg init --project C:\work\my-service --tools all --runtime typescript_web --level L2
+& $gg init --project C:\work\my-service --tools all --runtime typescript_supabase --level L2
 & $gg doctor --project C:\work\my-service
 ```
 
@@ -109,7 +109,7 @@ $gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
 
 | 항목 | 선택 값 | 언제 선택하나요 |
 |---|---|---|
-| AI 도구 | `codex`, `claude`, `antigravity`, `both`, `all` | 하나만 또는 여러 도구를 같은 프로젝트에 적용할 때. `both`는 Codex+Claude Code, `all`은 세 도구 모두입니다. |
+| AI 도구 | `codex`, `claude`, `antigravity`, `claude-desktop`, `chatgpt-desktop`, `lovable`, `both`, `all` | 하나만 또는 여러 도구를 같은 프로젝트에 적용할 때. `both`는 Codex+Claude Code, `all`은 지원하는 여섯 도구 전체입니다. `all`과 Lovable은 TypeScript/Supabase 엄격형을 사용합니다. |
 | 개발 방식 | `python_internal` | 내부 업무 처리·데이터 처리 중심 도구 |
 |  | `node_web` | JavaScript 기반 웹 도구 |
 |  | `typescript_web` | TypeScript 기반 웹 도구, 일반적인 웹 업무 도구에 권장 |

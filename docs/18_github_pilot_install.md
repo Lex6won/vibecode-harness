@@ -29,7 +29,7 @@ For a harness-only trial, use:
 
 ```powershell
 & "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd" init `
-  --project C:\work\my-service --tools all --runtime typescript_web --level L2
+  --project C:\work\my-service --tools all --runtime typescript_supabase --level L2
 
 & "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd" start `
   --project C:\work\my-service --brief "Internal civil-service web tool"
