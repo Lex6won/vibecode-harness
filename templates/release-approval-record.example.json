@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "release_version": "0.2.0",
+  "release_tag": "v0.2.0",
+  "source_commit": "replace-with-approved-commit",
+  "approval_status": "draft",
+  "requested_at": "replace-with-utc-timestamp",
+  "service_owner": {
+    "name_or_role": "",
+    "approved_at": null
+  },
+  "security_reviewer": {
+    "name_or_role": "",
+    "approved_at": null,
+    "checker_report_reference": ""
+  },
+  "operations_reviewer": {
+    "name_or_role": "",
+    "approved_at": null,
+    "fresh_windows_install_test_reference": "",
+    "rollback_owner": ""
+  },
+  "release_manager": {
+    "name_or_role": "",
+    "approved_at": null,
+    "bundle_id": "",
+    "bundle_manifest_sha256": "",
+    "installer_sha256": "",
+    "authenticode_subject": "",
+    "authenticode_timestamp": ""
+  },
+  "portal_publication": {
+    "release_notes_url": "",
+    "installer_download_url": "",
+    "published_at": null
+  },
+  "rollback": {
+    "previous_approved_version": "",
+    "procedure_reference": ""
+  }
+}

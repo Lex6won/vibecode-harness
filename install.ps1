@@ -28,6 +28,11 @@ function Find-CommandPath([string]$Name, [string[]]$Candidates = @()) {
   return $null
 }
 
+function Test-WindowsStoreAlias([string]$Path) {
+  if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+  return $Path -like "*\Microsoft\WindowsApps\python.exe"
+}
+
 function Join-WhenRoot([string]$Root, [string]$Child) {
   if ([string]::IsNullOrWhiteSpace($Root)) { return $null }
   return Join-Path $Root $Child
@@ -56,7 +61,9 @@ function Find-Python {
   foreach ($candidate in $candidates) {
     if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) { return $candidate }
   }
-  return Find-CommandPath "python.exe"
+  $python = Find-CommandPath "python.exe"
+  if (Test-WindowsStoreAlias $python) { return $null }
+  return $python
 }
 
 function Install-WingetPackage([string]$Id, [string]$Label) {
@@ -93,7 +100,7 @@ function Copy-HarnessToInstallDir([string]$Source, [string]$Destination) {
 
 if ($env:OS -ne "Windows_NT") { Stop-Install "이 설치 스크립트는 Windows 전용입니다." }
 $source = Split-Path -Parent $PSCommandPath
-foreach ($required in @("bin\gg.mjs", "lib\release-integrity.mjs", "shared\harness-core.yaml")) {
+foreach ($required in @("bin\gg.mjs", "bin\antigravity-pre-tool.mjs", "adapters\antigravity\plugin.json", "lib\release-integrity.mjs", "shared\harness-core.yaml")) {
   if (-not (Test-Path -LiteralPath (Join-Path $source $required))) { Stop-Install "GitHub ZIP을 완전히 푼 하네스 폴더에서 install.ps1을 실행하세요. 누락: $required" }
 }
 

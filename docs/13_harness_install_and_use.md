@@ -59,9 +59,10 @@ TypeScript 웹 도구를 Codex와 Claude Code에 적용하는 예시다.
 
 | 항목 | 값 | 의미 |
 |---|---|---|
-| `--tools` | `codex`, `claude`, `both` | 사용할 AI 코딩 도구 |
+| `--tools` | `codex`, `claude`, `antigravity`, `claude-desktop`, `chatgpt-desktop`, `lovable`, `both`, `all` | 사용할 AI 코딩 도구 또는 연동 방식 |
 | `--runtime` | `python_internal` | Python 내부 업무·자동화 |
 |  | `node_web` | JavaScript 기반 웹·API |
+|  | `typescript_supabase` | Lovable·Supabase용 TypeScript 엄격 프로필 |
 |  | `typescript_web` | TypeScript 기반 웹·업무 도구 |
 | `--level` | `L1`, `L2`, `L3` | 안내, 검증, 릴리스 준비 수준 |
 
@@ -119,9 +120,11 @@ TypeScript 웹 도구를 Codex와 Claude Code에 적용하는 예시다.
 
 `--tools claude` 또는 `both`를 선택하면 `CLAUDE.md`와 `.claude/settings.json`의 `PreToolUse` 훅이 적용된다. 훅은 허용하지 않은 언어 파일, 차단된 런타임, 직접 패키지 설치 명령을 개발 중에 차단한다.
 
-### 데스크톱 앱
+### 데스크톱 앱과 Lovable
 
-ChatGPT/Codex 데스크톱 및 Claude Desktop의 MCP 설정 형식은 제품·버전별로 다르다. 현재 하네스가 자동 적용을 보장하는 대상은 Codex CLI와 Claude Code다. 데스크톱 앱은 설정 형식을 별도로 검증하고, 설정 백업·복원·해제를 포함한 어댑터가 준비된 뒤 지원한다.
+Claude Desktop 및 ChatGPT/Codex Desktop은 프로젝트 안내 문서와 공통 Git 게이트로 지원한다. 데스크톱 앱의 모든 파일 작업을 사전 차단한다고 주장하지 않으며, `gg build`와 Git 커밋·PR 검증이 언어·런타임 정책의 강제 지점이다.
+
+Lovable은 `--tools lovable --runtime typescript_supabase`로 시작한다. 하네스는 TypeScript/TSX 구현, SQL 마이그레이션, TypeScript Supabase Edge Function만 허용하고, GitHub PR 검증 워크플로와 `VIBECODE-LOVABLE.md`를 만든다. Lovable은 전용 작업 브랜치에 동기화하고 통과한 PR만 `main`에 병합한다.
 
 ## 문제가 생겼을 때
 

@@ -1,14 +1,24 @@
 #!/usr/bin/env node
-import { extname } from "node:path";
-
-const blockedExtensions = new Map([
-  [".java", "Java"], [".go", "Go"], [".php", "PHP"], [".rb", "Ruby"],
-  [".cs", "C#"], [".rs", "Rust"]
-]);
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { isDirectPackageInstall, languageFailureForPath, runtimeFailureForCommand } from "../lib/policy-engine.mjs";
 
 function block(message) {
   process.stderr.write(`바이브코드 하네스 차단: ${message}\n`);
   process.exitCode = 2;
+}
+
+function policyProfileFromProject() {
+  let directory = resolve(process.cwd());
+  while (true) {
+    const lock = resolve(directory, ".vibecode-harness", "harness.lock.json");
+    if (existsSync(lock)) {
+      try { return JSON.parse(readFileSync(lock, "utf8")).policy_profile || "general"; } catch { return "general"; }
+    }
+    const parent = dirname(directory);
+    if (parent === directory) return "general";
+    directory = parent;
+  }
 }
 
 let raw = "";
@@ -19,14 +29,16 @@ try {
   const event = JSON.parse(raw);
   const input = event.tool_input || event.toolInput || {};
   const filePath = String(input.file_path || input.path || input.file || "");
-  const extension = extname(filePath).toLowerCase();
-  if (blockedExtensions.has(extension)) {
-    block(`${blockedExtensions.get(extension)} 파일은 기관 기본 언어 정책의 예외 검토 대상입니다: ${filePath}`);
+  const profile = policyProfileFromProject();
+  const languageFailure = languageFailureForPath(profile, filePath);
+  if (languageFailure) {
+    block(languageFailure);
   } else {
     const command = String(input.command || "").replace(/\\/g, "/").toLowerCase();
-    if (/(^|[\s;&|])(?:go|java|php|ruby|dotnet|cargo)(?:[\s;&|]|$)/.test(command)) {
-      block("승인되지 않은 언어 또는 런타임 명령입니다. Python, JavaScript, TypeScript 트랙을 사용하세요.");
-    } else if (/(^|[\s;&|])(?:npm|pnpm|yarn)(?:\.cmd|\.exe)?\s+(?:install|add)\b/.test(command) || /(?:^|[\s;&|])(?:pip|pip3)(?:\.exe)?\s+install\b|python(?:\.exe)?\s+-m\s+pip\s+install\b/.test(command)) {
+    const runtimeFailure = runtimeFailureForCommand(profile, command);
+    if (runtimeFailure) {
+      block(runtimeFailure);
+    } else if (isDirectPackageInstall(command)) {
       block("새 패키지는 직접 설치하지 않습니다. 먼저 gg package check로 체커 검토와 기관 패키지 정책을 확인하세요.");
     }
   }

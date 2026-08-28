@@ -1,0 +1,16 @@
+{
+  "vibecode-harness-pre-tool": {
+    "PreToolUse": [
+      {
+        "matcher": "run_command|create_file|edit_file|write_file|move_file|copy_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .vibecode-harness/bin/antigravity-pre-tool.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

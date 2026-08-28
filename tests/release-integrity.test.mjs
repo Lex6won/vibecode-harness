@@ -31,11 +31,8 @@ async function makeBundle({ version = "1.0.0", minimum = version, expiresAt = nu
   const root = await mkdtemp(join(tmpdir(), "vibecode-release-bundle-"));
   await mkdir(join(root, "bin"), { recursive: true });
   await mkdir(join(root, "runtime"), { recursive: true });
-  await mkdir(join(root, "checker"), { recursive: true });
   await writeFile(join(root, "bin", "gg.mjs"), "export {};\n");
   await writeFile(join(root, "runtime", "node.exe"), "approved-node-runtime\n");
-  await writeFile(join(root, "runtime", "python.exe"), "approved-python-runtime\n");
-  await writeFile(join(root, "checker", "gvskb.exe"), "approved-checker-runtime\n");
 
   const keys = keyPair || generateKeyPairSync("ed25519");
   const trustPath = `${root}-approved-signers.json`;
@@ -57,9 +54,7 @@ async function makeBundle({ version = "1.0.0", minimum = version, expiresAt = nu
     signerKeyId: "gg-release-1",
     components: {
       harness: { path: "bin/gg.mjs", version },
-      node_runtime: { path: "runtime/node.exe", version: "22.0.0" },
-      python_runtime: { path: "runtime/python.exe", version: "3.13.0" },
-      checker: { path: "checker/gvskb.exe", version: "1.0.0" }
+      node_runtime: { path: "runtime/node.exe", version: "22.0.0" }
     }
   });
   if (expiresAt) manifest.expires_at = expiresAt;
@@ -94,9 +89,22 @@ test("gg bundle verify exposes only the verified result to callers", async () =>
 test("a changed bundle file requires repair instead of passing", async () => {
   const fixture = await makeBundle();
   try {
-    await writeFile(join(fixture.root, "checker", "gvskb.exe"), "tampered\n");
+    await writeFile(join(fixture.root, "runtime", "node.exe"), "tampered\n");
     const result = await verifyBundle({ bundleDir: fixture.root, trustPath: fixture.trustPath });
     assert.equal(result.status, "repair_required");
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+    await rm(fixture.trustPath, { force: true });
+  }
+});
+
+test("Inno Setup's generated uninstaller files do not invalidate a clean installed bundle", async () => {
+  const fixture = await makeBundle();
+  try {
+    await writeFile(join(fixture.root, "unins000.dat"), "installer-owned metadata\n");
+    await writeFile(join(fixture.root, "unins000.exe"), "installer-owned executable\n");
+    const result = await verifyBundle({ bundleDir: fixture.root, trustPath: fixture.trustPath });
+    assert.equal(result.status, "verified");
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
     await rm(fixture.trustPath, { force: true });
@@ -116,9 +124,7 @@ test("bundle creation refuses to include a private key", async () => {
         signerKeyId: "gg-release-1",
         components: {
           harness: { path: "bin/gg.mjs", version: "1.0.0" },
-          node_runtime: { path: "runtime/node.exe", version: "22.0.0" },
-          python_runtime: { path: "runtime/python.exe", version: "3.13.0" },
-          checker: { path: "checker/gvskb.exe", version: "1.0.0" }
+          node_runtime: { path: "runtime/node.exe", version: "22.0.0" }
         }
       }),
       /개인키 또는 비밀 파일/

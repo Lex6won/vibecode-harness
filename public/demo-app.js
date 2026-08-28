@@ -24,7 +24,7 @@ const TOOL_LABELS = {
 };
 
 function setDownloadUnavailable(text) {
-  elements.download.textContent = "설치 파일 준비 중";
+  elements.download.textContent = "Installer unavailable";
   elements.download.classList.add("is-disabled");
   elements.download.setAttribute("aria-disabled", "true");
   elements.download.removeAttribute("download");
@@ -33,53 +33,57 @@ function setDownloadUnavailable(text) {
 }
 
 function renderRelease(index) {
-  elements.badge.textContent = index.environment === "production" ? "운영" : "시범 운영";
-  elements.message.textContent = index.message || "승인된 설치 파일 정보를 확인하세요.";
+  elements.badge.textContent = index.environment === "production" ? "Production" : "Demonstration";
+  elements.message.textContent = index.message || "Check the installer status.";
   elements.guide.href = index.support?.installation_guide || elements.guide.href;
   elements.repository.href = index.support?.repository_url || elements.repository.href;
   const capabilities = index.capabilities || {};
   const tools = Array.isArray(capabilities.supported_tools) ? capabilities.supported_tools : [];
   elements.supportedTools.textContent = tools.length
-    ? `지원: ${tools.map((tool) => TOOL_LABELS[tool] || tool).join(" · ")}`
-    : "지원 도구 정보가 아직 등록되지 않았습니다.";
-  elements.projectSetup.textContent = capabilities.project_setup || "프로젝트 설정 정보가 아직 등록되지 않았습니다.";
-  elements.updatePolicy.textContent = capabilities.update_policy || "업데이트 정보가 아직 등록되지 않았습니다.";
+    ? `Supported: ${tools.map((tool) => TOOL_LABELS[tool] || tool).join(", ")}`
+    : "Supported tool information is not available.";
+  elements.projectSetup.textContent = capabilities.project_setup || "Project setup information is not available.";
+  elements.updatePolicy.textContent = capabilities.update_policy || "Update policy information is not available.";
 
   const installer = index.installer;
-  const ready = index.status === "installer_published"
+  const officialReady = index.status === "installer_published"
     && installer?.download_url
     && /^[a-f0-9]{64}$/i.test(installer.sha256 || "")
     && installer.signature_status === "authenticode_verified";
+  const demonstrationReady = index.status === "demo_installer_published"
+    && installer?.download_url
+    && /^[a-f0-9]{64}$/i.test(installer.sha256 || "")
+    && installer.signature_status === "pem_bundle_verified_unsigned_demo";
 
-  if (!ready) {
-    elements.status.textContent = "공식 설치 파일 준비 중";
-    setDownloadUnavailable("승인된 설치 파일과 SHA-256, Authenticode 확인값이 등록된 경우에만 다운로드할 수 있습니다.");
+  if (!officialReady && !demonstrationReady) {
+    elements.status.textContent = "Official installer unavailable";
+    setDownloadUnavailable("Download is enabled only after signed installer metadata is registered.");
     return;
   }
 
-  elements.status.textContent = "설치 파일 사용 가능";
-  elements.download.textContent = "Windows 설치 파일 받기";
+  elements.status.textContent = officialReady ? "Signed installer available" : "Unsigned demonstration installer available";
+  elements.download.textContent = officialReady ? "Download Windows installer" : "Download unsigned demonstration EXE";
   elements.download.classList.remove("is-disabled");
   elements.download.removeAttribute("aria-disabled");
   elements.download.href = installer.download_url;
   elements.download.download = "";
-  elements.detail.textContent = `버전 ${installer.version} · SHA-256 ${installer.sha256} · 코드서명 확인됨`;
+  elements.detail.textContent = officialReady
+    ? `Version ${installer.version}; SHA-256 ${installer.sha256}; Authenticode verified.`
+    : `Demonstration only; PEM bundle verified, EXE intentionally unsigned. SHA-256 ${installer.sha256}`;
 }
 
 async function loadRelease() {
   elements.refresh.disabled = true;
-  elements.refresh.textContent = "확인 중";
   try {
     const response = await fetch(`${RELEASE_INDEX}?t=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) throw new Error("release index unavailable");
     renderRelease(await response.json());
   } catch {
-    elements.status.textContent = "설치 상태를 확인할 수 없음";
-    elements.message.textContent = "네트워크 또는 배포 설정을 확인한 뒤 다시 시도하세요.";
-    setDownloadUnavailable("상태를 확인할 수 없는 경우 설치 파일을 제공하지 않습니다.");
+    elements.status.textContent = "Unable to check installer status";
+    elements.message.textContent = "Check network and deployment settings, then try again.";
+    setDownloadUnavailable("The release state could not be verified.");
   } finally {
     elements.refresh.disabled = false;
-    elements.refresh.textContent = "상태 새로 고침";
   }
 }
 
