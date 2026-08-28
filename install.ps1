@@ -130,10 +130,10 @@ Write-Step "하네스 파일을 사용자 폴더에 설치합니다. 기존 설�
 $backup = Copy-HarnessToInstallDir $source $InstallDir
 $wrapper = Join-Path $InstallDir "gg.cmd"
 $escapedNode = $node.Replace('"', '""')
-@"
-@echo off
-"$escapedNode" "%~dp0bin\gg.mjs" %*
-"@ | Set-Content -LiteralPath $wrapper -Encoding Ascii
+Set-Content -LiteralPath $wrapper -Encoding Ascii -Value @(
+  "@echo off",
+  "`"$escapedNode`" `"%~dp0bin\gg.mjs`" %*"
+)
 
 $receipt = [ordered]@{
   schema_version = 1

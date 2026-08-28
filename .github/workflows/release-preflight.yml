@@ -28,7 +28,9 @@ jobs:
           node-version: 22
       - name: Validate source and release tag
         shell: pwsh
-        run: node scripts/release-preflight.mjs --tag "$env:RELEASE_TAG"
+        run: |
+          $channel = if ($env:RELEASE_TAG -match '-demo\.\d+$') { 'demonstration' } else { 'production' }
+          node scripts/release-preflight.mjs --tag "$env:RELEASE_TAG" --channel $channel
       - name: Run harness regression tests
         run: npm test
       - name: Verify policy consistency
