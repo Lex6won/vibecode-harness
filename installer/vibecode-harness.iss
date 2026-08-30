@@ -34,11 +34,11 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Source: "{#BundlePath}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
-Name: "{group}\VibeCode Harness Manager"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -File ""{app}\manager.ps1"""; WorkingDir: "{app}"
+Name: "{group}\VibeCode Harness Manager"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -File ""{app}\manager.ps1"""; WorkingDir: "{app}"
 Name: "{group}\VibeCode Harness 상태 확인"; Filename: "{app}\runtime\node.exe"; Parameters: """{app}\bin\gg.mjs"" doctor"
 
 [Run]
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -File ""{app}\manager.ps1"""; WorkingDir: "{app}"; Description: "VibeCode Harness Manager 시작"; Flags: nowait postinstall skipifsilent
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -File ""{app}\manager.ps1"""; WorkingDir: "{app}"; Description: "VibeCode Harness Manager 시작"; Flags: nowait postinstall skipifsilent
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);

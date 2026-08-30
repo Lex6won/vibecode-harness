@@ -12,6 +12,7 @@ test("installer fails closed when bundle verification fails", async () => {
   assert.match(installer, /RaiseException/);
   assert.match(installer, /\[Run\]/);
   assert.match(installer, /manager\.ps1/);
+  assert.match(installer, /-WindowStyle Hidden -File/);
 });
 
 test("installer build contract embeds only the Harness runtime and code signing", async () => {
