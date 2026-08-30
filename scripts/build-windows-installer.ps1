@@ -21,7 +21,12 @@ $node = Join-Path $bundle "runtime\node.exe"
 # are server-side Portal components and must not be included in the user EXE.
 if (-not (Test-Path -LiteralPath $node)) { throw "Approved embedded Node runtime is missing from the bundle." }
 if (-not (Test-Path -LiteralPath (Join-Path $bundle "gg.cmd"))) { throw "User launcher gg.cmd is missing from the bundle." }
-if (-not (Test-Path -LiteralPath (Join-Path $bundle "manager.ps1"))) { throw "Harness Manager GUI script is missing from the bundle." }
+$manager = Join-Path $bundle "manager.ps1"
+if (-not (Test-Path -LiteralPath $manager)) { throw "Harness Manager GUI script is missing from the bundle." }
+$managerBytes = [System.IO.File]::ReadAllBytes($manager)
+if ($managerBytes.Length -lt 3 -or $managerBytes[0] -ne 0xEF -or $managerBytes[1] -ne 0xBB -or $managerBytes[2] -ne 0xBF) {
+  throw "Manager PowerShell script must be UTF-8 with BOM for Windows PowerShell -File execution."
+}
 if (-not (Test-Path -LiteralPath (Join-Path $bundle "bundle.manifest.json"))) { throw "Signed bundle manifest is missing from the bundle." }
 
 & $node (Join-Path $root "bin\gg.mjs") bundle verify --bundle $bundle --trust $trust
