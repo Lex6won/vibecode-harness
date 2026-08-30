@@ -20,17 +20,17 @@ function runGg(project, args) {
   });
 }
 
-test("TypeScript PostgreSQL profile permits only TypeScript implementation sources", () => {
+test("common JavaScript TypeScript PostgreSQL profile permits both Node implementation languages", () => {
   assert.equal(languageFailureForPath("typescript_postgres", "src/App.tsx"), null);
   assert.equal(languageFailureForPath("typescript_postgres", "postgres/migrations/001.sql"), null);
-  assert.match(languageFailureForPath("typescript_postgres", "src/server.js"), /JavaScript/);
+  assert.equal(languageFailureForPath("typescript_postgres", "src/server.js"), null);
   assert.match(languageFailureForPath("typescript_postgres", "worker.py"), /Python/);
   assert.match(runtimeFailureForCommand("typescript_postgres", "python tool.py"), /Python/);
   assert.equal(runtimeFailureForCommand("typescript_postgres", "supabase functions deploy hello"), null);
   assert.equal(languageFailureForPath("typescript_supabase", "src/App.tsx"), null, "legacy Supabase lock remains compatible");
 });
 
-test("TypeScript PostgreSQL project blocks JavaScript and Python bypasses", async () => {
+test("common JavaScript TypeScript PostgreSQL project blocks Python bypasses", async () => {
   const project = await mkdtemp(join(tmpdir(), "vibecode-harness-supabase-"));
   try {
     const init = await runGg(project, ["init", "--tools", "codex", "--runtime", "typescript_postgres", "--level", "L1"]);
@@ -40,7 +40,6 @@ test("TypeScript PostgreSQL project blocks JavaScript and Python bypasses", asyn
     await writeFile(join(project, "requirements.txt"), "requests==2.32.0\n");
     const build = await runGg(project, ["build"]);
     assert.equal(build.code, 10, build.stdout + build.stderr);
-    assert.match(build.stdout, /JavaScript/);
     assert.match(build.stdout, /Python/);
   } finally {
     await rm(project, { recursive: true, force: true });

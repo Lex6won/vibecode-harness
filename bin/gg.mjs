@@ -396,7 +396,7 @@ async function policyCheck(project, lock) {
   if (lock.runtime_profile === "node_web") {
     for (const file of implementationFiles) if ([".ts", ".tsx"].includes(extname(file).toLowerCase())) failures.push(`Node.js 트랙에서 TypeScript 구현 파일을 발견했습니다: ${relative(project, file)}`);
   }
-  if (["typescript_web", "typescript_postgres", "typescript_supabase"].includes(lock.runtime_profile) && implementationFiles.length && !implementationFiles.some((file) => [".ts", ".tsx"].includes(extname(file).toLowerCase()))) {
+  if (lock.runtime_profile === "typescript_web" && implementationFiles.length && !implementationFiles.some((file) => [".ts", ".tsx"].includes(extname(file).toLowerCase()))) {
     failures.push("TypeScript 트랙에는 .ts 또는 .tsx 구현 파일이 하나 이상 필요합니다.");
   }
   const packageJson = join(project, "package.json");
