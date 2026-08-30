@@ -99,7 +99,9 @@ for ($index = 0; $index -lt $toolDefinitions.Count; $index += 1) {
   $check.Text = "$($item.Label) — $($item.Detail)"
   $check.Tag = $item.Id
   $check.AutoSize = $true
-  $check.Location = New-Object System.Drawing.Point(16 + (320 * ($index % 2)), 28 + (48 * [math]::Floor($index / 2)))
+  $left = 16 + (320 * ($index % 2))
+  $top = 28 + (48 * [math]::Floor($index / 2))
+  $check.Location = New-Object System.Drawing.Point($left, $top)
   $toolsGroup.Controls.Add($check)
   $toolBoxes[$item.Id] = $check
 }
