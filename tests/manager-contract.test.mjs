@@ -26,6 +26,8 @@ test("Harness Manager applies selected tools without collecting tool credentials
   assert.match(source, /claude-desktop/);
   assert.match(source, /chatgpt-desktop/);
   assert.match(source, /lovable/);
+  assert.match(source, /\$left = 16 \+ \(320 \* \(\$index % 2\)\)/);
+  assert.doesNotMatch(source, /New-Object System\.Drawing\.Point\(16 \+/);
   assert.doesNotMatch(source, /ExecutionPolicy\s+Bypass/i);
   assert.doesNotMatch(source, /password|api[_-]?key|token/i);
 });
