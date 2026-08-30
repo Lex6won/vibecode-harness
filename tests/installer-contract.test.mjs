@@ -46,3 +46,10 @@ test("demonstration installer is separately named, verifies the PEM-signed bundl
   assert.match(installer, /DemoBuild/);
   assert.match(installer, /Gyeonggi-VibeCode-Harness-Demo-Unsigned-Setup/);
 });
+
+test("test installers use a separate identity and never replace a user demonstration installation", async () => {
+  const installer = await readFile(join(root, "installer", "vibecode-harness.iss"), "utf8");
+  assert.match(installer, /#ifdef TestBuild/);
+  assert.match(installer, /VibeCodeHarness-Test/);
+  assert.match(installer, /8A4A22CD-C161-4082-8EA4-18C5D2CB3EF5/);
+});
