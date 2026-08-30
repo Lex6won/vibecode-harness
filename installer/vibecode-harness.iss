@@ -48,12 +48,38 @@ Name: "{group}\VibeCode Harness 상태 확인"; Filename: "{app}\runtime\node.ex
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -WindowStyle Hidden -File ""{app}\manager.ps1"""; WorkingDir: "{app}"; Description: "VibeCode Harness Manager 시작"; Flags: nowait postinstall skipifsilent
 
 [Code]
+var
+  PreviousBundleManifest: String;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  PreviousBundleManifest := ExpandConstant('{tmp}\vibecode-harness-previous-bundle-manifest.json');
+  if FileExists(ExpandConstant('{app}\bundle.manifest.json')) then
+  begin
+    if not CopyFile(ExpandConstant('{app}\bundle.manifest.json'), PreviousBundleManifest, False) then
+      Result := 'Could not preserve the previous approved bundle manifest before updating.';
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
 begin
   if CurStep <> ssPostInstall then
     exit;
+
+  if FileExists(PreviousBundleManifest) then
+  begin
+    if not Exec(
+      ExpandConstant('{app}\runtime\node.exe'),
+      '"' + ExpandConstant('{app}\bin\gg.mjs') + '" bundle cleanup --bundle "' + ExpandConstant('{app}') + '" --previous-manifest "' + PreviousBundleManifest + '"',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      RaiseException('The approved update cleanup command could not run. Installation cannot continue.');
+
+    if ResultCode <> 0 then
+      RaiseException('The approved update cleanup failed. Existing files were left intact and installation cannot continue.');
+  end;
 
   if not Exec(
     ExpandConstant('{app}\runtime\node.exe'),

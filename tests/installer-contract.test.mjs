@@ -9,6 +9,10 @@ test("installer fails closed when bundle verification fails", async () => {
   const installer = await readFile(join(root, "installer", "vibecode-harness.iss"), "utf8");
   assert.match(installer, /\[Code\]/);
   assert.match(installer, /bundle verify --bundle/);
+  assert.match(installer, /PrepareToInstall/);
+  assert.match(installer, /previous-bundle-manifest/);
+  assert.match(installer, /bundle cleanup --bundle/);
+  assert.match(installer, /previous-manifest/);
   assert.match(installer, /RaiseException/);
   assert.match(installer, /\[Run\]/);
   assert.match(installer, /manager\.ps1/);

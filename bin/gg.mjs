@@ -6,7 +6,7 @@ import { basename, dirname, extname, join, resolve, relative, sep } from "node:p
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
-import { installationState, verifyBundle } from "../lib/release-integrity.mjs";
+import { cleanupSupersededBundleFiles, installationState, verifyBundle } from "../lib/release-integrity.mjs";
 import {
   ALL_CODE_EXTENSIONS,
   getPolicyProfile,
@@ -606,6 +606,18 @@ async function bundleCommand(options) {
     const result = await verifyBundle({ bundleDir: resolve(options.bundle), trustPath });
     print(result);
     if (result.status !== "verified") process.exitCode = EXIT.CHECKER_INCOMPLETE;
+    return;
+  }
+  if (action === "cleanup") {
+    if (!options.bundle || options.bundle === true) throw new Error("bundle cleanup requires --bundle <installed bundle folder>.");
+    if (!options["previous-manifest"] || options["previous-manifest"] === true) throw new Error("bundle cleanup requires --previous-manifest <previous approved manifest>.");
+    const result = await cleanupSupersededBundleFiles({
+      bundleDir: resolve(options.bundle),
+      previousManifestPath: resolve(options["previous-manifest"]),
+      trustPath,
+      backupDir: options["backup-dir"] && options["backup-dir"] !== true ? resolve(options["backup-dir"]) : undefined
+    });
+    print(result);
     return;
   }
   if (action === "status") {
