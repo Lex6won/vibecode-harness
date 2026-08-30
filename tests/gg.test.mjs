@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { spawn } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 
 const harnessRoot = resolve(import.meta.dirname, "..");
 const gg = join(harnessRoot, "bin", "gg.mjs");
@@ -44,6 +45,19 @@ async function fakeCheckerEnvironment(report = { scanned_files: ["app.ts"], skip
 
 async function writeFakeChecker(project) {
   await writeFile(join(project, "scan"), "process.stdout.write(process.env.GG_TEST_CHECKER_REPORT + '\\n');\n");
+}
+
+async function removeTemporaryDirectory(directory) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      await rm(directory, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const retryable = error?.code === "EBUSY" || error?.code === "EPERM";
+      if (!retryable || attempt === 5) throw error;
+      await delay(100 * (attempt + 1));
+    }
+  }
 }
 
 async function makeProject({ runtime = "typescript_web", level = "L1", source = "export const add = (a, b) => a + b;\n", testSource = null } = {}) {
@@ -307,7 +321,7 @@ test("verify allows a complete clean scan to continue development but keeps rele
       assert.match(result.stdout, /review_required/);
       assert.match(result.stdout, /커밋은 가능하지만/);
     } finally {
-      await rm(checker.directory, { recursive: true, force: true });
+      await removeTemporaryDirectory(checker.directory);
     }
   });
 });
@@ -327,7 +341,7 @@ test("verify treats declared dependencies without a completed audit as incomplet
       assert.equal(result.code, 41, result.stdout + result.stderr);
       assert.match(result.stdout, /의존성 감사를 완료하지 못했습니다/);
     } finally {
-      await rm(checker.directory, { recursive: true, force: true });
+      await removeTemporaryDirectory(checker.directory);
     }
   });
 });
