@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { spawn } from "node:child_process";
 import {
   createBundleManifest,
+  cleanupSupersededBundleFiles,
   installationState,
   signManifest,
   verifyBundle,
@@ -27,12 +28,17 @@ function runGg(args) {
   });
 }
 
-async function makeBundle({ version = "1.0.0", minimum = version, expiresAt = null, revokedBundleIds = [], keyPair = null } = {}) {
+async function makeBundle({ version = "1.0.0", minimum = version, expiresAt = null, revokedBundleIds = [], keyPair = null, extraFiles = {} } = {}) {
   const root = await mkdtemp(join(tmpdir(), "vibecode-release-bundle-"));
   await mkdir(join(root, "bin"), { recursive: true });
   await mkdir(join(root, "runtime"), { recursive: true });
   await writeFile(join(root, "bin", "gg.mjs"), "export {};\n");
   await writeFile(join(root, "runtime", "node.exe"), "approved-node-runtime\n");
+  for (const [relativePath, content] of Object.entries(extraFiles)) {
+    const path = join(root, ...relativePath.split("/"));
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, content);
+  }
 
   const keys = keyPair || generateKeyPairSync("ed25519");
   const trustPath = `${root}-approved-signers.json`;
@@ -175,5 +181,83 @@ test("new approved bundle requests update and honours minimum version", async ()
     await rm(candidate.root, { recursive: true, force: true });
     await rm(installed.trustPath, { force: true });
     await rm(candidate.trustPath, { force: true });
+  }
+});
+
+async function stageBundleUpdate(installed, candidate) {
+  const previousManifestPath = `${installed.root}-previous-manifest.json`;
+  await cp(join(installed.root, "bundle.manifest.json"), previousManifestPath);
+  await cp(candidate.root, installed.root, { recursive: true, force: true });
+  return previousManifestPath;
+}
+
+test("an approved update removes only files removed from the next approved bundle", async () => {
+  const keys = generateKeyPairSync("ed25519");
+  const installed = await makeBundle({ version: "1.0.0", keyPair: keys, extraFiles: { "obsolete/legacy-runner.mjs": "old approved file\n" } });
+  const candidate = await makeBundle({ version: "1.1.0", keyPair: keys });
+  let previousManifestPath;
+  try {
+    previousManifestPath = await stageBundleUpdate(installed, candidate);
+    const result = await cleanupSupersededBundleFiles({
+      bundleDir: installed.root,
+      previousManifestPath,
+      trustPath: installed.trustPath
+    });
+    assert.deepEqual(result.removed, ["obsolete/legacy-runner.mjs"]);
+    await assert.rejects(readFile(join(installed.root, "obsolete", "legacy-runner.mjs")));
+    assert.equal((await verifyBundle({ bundleDir: installed.root, trustPath: installed.trustPath })).status, "verified");
+  } finally {
+    await rm(installed.root, { recursive: true, force: true });
+    await rm(candidate.root, { recursive: true, force: true });
+    await rm(installed.trustPath, { force: true });
+    await rm(candidate.trustPath, { force: true });
+    if (previousManifestPath) await rm(previousManifestPath, { force: true });
+  }
+});
+
+test("an update preserves a user-modified obsolete file outside the installation before cleanup", async () => {
+  const keys = generateKeyPairSync("ed25519");
+  const installed = await makeBundle({ version: "1.0.0", keyPair: keys, extraFiles: { "obsolete/user-notes.txt": "old approved content\n" } });
+  const candidate = await makeBundle({ version: "1.1.0", keyPair: keys });
+  const backupRoot = `${installed.root}-backups`;
+  let previousManifestPath;
+  try {
+    previousManifestPath = await stageBundleUpdate(installed, candidate);
+    await writeFile(join(installed.root, "obsolete", "user-notes.txt"), "user changed this file\n");
+    const result = await cleanupSupersededBundleFiles({
+      bundleDir: installed.root,
+      previousManifestPath,
+      trustPath: installed.trustPath,
+      backupDir: backupRoot
+    });
+    assert.equal(result.backed_up.length, 1);
+    assert.equal(await readFile(join(backupRoot, "obsolete", "user-notes.txt"), "utf8"), "user changed this file\n");
+    assert.equal((await verifyBundle({ bundleDir: installed.root, trustPath: installed.trustPath })).status, "verified");
+  } finally {
+    await rm(installed.root, { recursive: true, force: true });
+    await rm(candidate.root, { recursive: true, force: true });
+    await rm(installed.trustPath, { force: true });
+    await rm(candidate.trustPath, { force: true });
+    await rm(backupRoot, { recursive: true, force: true });
+    if (previousManifestPath) await rm(previousManifestPath, { force: true });
+  }
+});
+
+test("an update fails closed when an unexpected extra file is present", async () => {
+  const keys = generateKeyPairSync("ed25519");
+  const installed = await makeBundle({ version: "1.0.0", keyPair: keys, extraFiles: { "obsolete/legacy-runner.mjs": "old approved file\n" } });
+  const candidate = await makeBundle({ version: "1.1.0", keyPair: keys });
+  let previousManifestPath;
+  try {
+    previousManifestPath = await stageBundleUpdate(installed, candidate);
+    await writeFile(join(installed.root, "unexpected.txt"), "not approved\n");
+    await assert.rejects(cleanupSupersededBundleFiles({ bundleDir: installed.root, previousManifestPath, trustPath: installed.trustPath }));
+    assert.equal(await readFile(join(installed.root, "obsolete", "legacy-runner.mjs"), "utf8"), "old approved file\n");
+  } finally {
+    await rm(installed.root, { recursive: true, force: true });
+    await rm(candidate.root, { recursive: true, force: true });
+    await rm(installed.trustPath, { force: true });
+    await rm(candidate.trustPath, { force: true });
+    if (previousManifestPath) await rm(previousManifestPath, { force: true });
   }
 });
