@@ -16,6 +16,7 @@ $node = (Resolve-Path -LiteralPath $NodeExecutable).Path
 $privateKey = (Resolve-Path -LiteralPath $PrivateKeyPath).Path
 $output = [System.IO.Path]::GetFullPath($OutputPath)
 $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
+$utf8WithBom = New-Object System.Text.UTF8Encoding($true)
 
 if ((Get-Item -LiteralPath $node).Name -ne "node.exe") { throw "NodeExecutable must be the approved node.exe file." }
 if (Test-Path -LiteralPath $output) {
@@ -25,9 +26,14 @@ if (Test-Path -LiteralPath $output) {
   New-Item -ItemType Directory -Path $output | Out-Null
 }
 
-foreach ($file in @("gg.cmd", "manager.ps1")) {
-  Copy-Item -LiteralPath (Join-Path $root $file) -Destination (Join-Path $output $file) -Force
-}
+Copy-Item -LiteralPath (Join-Path $root "gg.cmd") -Destination (Join-Path $output "gg.cmd") -Force
+
+# Windows PowerShell 5.1 reads a BOM-less script passed with -File using the
+# legacy ANSI code page. The Manager contains Korean UI text, so emit a UTF-8
+# BOM only for the packaged Manager script. This changes neither its logic nor
+# the signed runtime contents; it makes the launch encoding deterministic.
+$managerSource = [System.IO.File]::ReadAllText((Join-Path $root "manager.ps1"), [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText((Join-Path $output "manager.ps1"), $managerSource, $utf8WithBom)
 foreach ($directory in @("bin", "lib", "adapters", "shared", "templates")) {
   Copy-Item -LiteralPath (Join-Path $root $directory) -Destination (Join-Path $output $directory) -Recurse -Force
 }

@@ -22,6 +22,7 @@ test("installer build contract embeds only the Harness runtime and code signing"
   assert.match(build, /server-side Portal components/);
   assert.match(build, /gg\.cmd/);
   assert.match(build, /manager\.ps1/);
+  assert.match(build, /UTF-8 with BOM/);
   assert.match(build, /signtool\.exe/);
   assert.match(build, /signtool sign/);
   assert.match(build, /signtool verify/);
@@ -38,6 +39,8 @@ test("demonstration installer is separately named, verifies the PEM-signed bundl
   assert.match(demoBundle, /sign-release-bundle\.mjs/);
   assert.match(demoBundle, /demo-release\.json/);
   assert.match(demoBundle, /UTF8Encoding\(\$false\)/);
+  assert.match(demoBundle, /UTF8Encoding\(\$true\)/);
+  assert.match(demoBundle, /WriteAllText\(\(Join-Path \$output "manager\.ps1"\)/);
   assert.doesNotMatch(demoBundle, /Set-Content.*-Encoding UTF8/);
   assert.match(installer, /DemoBuild/);
   assert.match(installer, /Gyeonggi-VibeCode-Harness-Demo-Unsigned-Setup/);
