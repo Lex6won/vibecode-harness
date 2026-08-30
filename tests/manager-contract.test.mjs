@@ -42,6 +42,15 @@ test("Harness Manager visibly identifies an unsigned demonstration bundle", asyn
   assert.match(source, /UNSIGNED DEMONSTRATION BUILD/);
 });
 
+test("Harness Manager presents a completion-and-close action only after a successful apply", async () => {
+  const source = await readFile(manager, "utf8");
+  assert.match(source, /\$appliedSuccessfully = \$false/);
+  assert.match(source, /if \(\$appliedSuccessfully\) \{\s*\$form\.Close\(\)/);
+  assert.match(source, /적용이 완료되었습니다/);
+  assert.match(source, /\$apply\.Text = "확인 후 닫기"/);
+  assert.match(source, /\$browse\.Enabled = \$false/);
+});
+
 test("Harness Manager is valid PowerShell syntax", async () => {
   const executable = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
   const escaped = manager.replace(/'/g, "''");

@@ -38,6 +38,7 @@ $form.Size = New-Object System.Drawing.Size(720, 630)
 $form.MinimumSize = New-Object System.Drawing.Size(720, 630)
 $form.StartPosition = "CenterScreen"
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$appliedSuccessfully = $false
 
 if ($isDemonstration) {
   $demoWarning = New-Object System.Windows.Forms.Label
@@ -180,6 +181,11 @@ $toolBoxes["lovable"].Add_CheckedChanged({
 })
 
 $apply.Add_Click({
+  if ($appliedSuccessfully) {
+    $form.Close()
+    return
+  }
+
   $project = $projectPath.Text.Trim()
   if ([string]::IsNullOrWhiteSpace($project)) {
     [System.Windows.Forms.MessageBox]::Show("프로젝트 폴더를 선택하세요.", "VibeCode Harness", "OK", "Warning") | Out-Null
@@ -203,7 +209,14 @@ $apply.Add_Click({
   $result = Invoke-Harness $arguments
   $apply.Enabled = $true
   if ($result.ExitCode -eq 0) {
-    $status.Text = "적용 완료. 이제 선택한 도구로 개발하세요. 개발이 끝나면 포털에서 서버 보안점검을 요청하세요.`r`n`r`n$result.Output"
+    $selectedLabels = @($toolDefinitions | Where-Object { $selected -contains $_.Id } | ForEach-Object { $_.Label }) -join ", "
+    $appliedSuccessfully = $true
+    $projectPath.ReadOnly = $true
+    $browse.Enabled = $false
+    foreach ($box in $toolBoxes.Values) { $box.Enabled = $false }
+    $status.Text = "적용이 완료되었습니다.`r`n프로젝트: $project`r`n적용된 도구: $selectedLabels`r`n공통 정책: JavaScript · TypeScript · PostgreSQL`r`n`r`n이제 선택한 도구로 개발하세요. 개발이 끝나면 포털에서 서버 보안점검을 요청하세요."
+    $apply.Text = "확인 후 닫기"
+    $apply.Focus()
   } else {
     $status.Text = "적용하지 못했습니다. 기존 설정은 보존되었습니다.`r`n`r`n$result.Output"
   }
