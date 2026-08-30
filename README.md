@@ -161,7 +161,7 @@ $gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
 | Google Antigravity | 프로젝트의 `.agents/plugins/vibecode-harness/`에 규칙, 스킬, 작업 전 Hook을 적용합니다. 지원하지 않는 언어와 직접 패키지 설치 명령은 Hook이 차단합니다. |
 | Claude Desktop | 프로젝트 정책 안내를 적용하고 Git 게이트에서 언어·런타임을 강제합니다. 일반 파일 작업을 가로채는 훅을 보장하지 않습니다. |
 | ChatGPT/Codex Desktop | 로컬 체크아웃의 `AGENTS.md`와 프로젝트 정책, Git 게이트를 사용합니다. 로그인 정보·토큰은 읽지 않습니다. |
-| Lovable + GitHub | `typescript_postgres` 엄격 프로필과 전용 동기화 브랜치·GitHub PR 게이트를 적용합니다. Supabase는 PostgreSQL 기반의 선택 가능한 연동이며, Lovable 내부 지침은 안내이고 PR 게이트가 강제 지점입니다. |
+| Lovable + GitHub | JavaScript·TypeScript·PostgreSQL 공통 프로필과 전용 동기화 브랜치·GitHub PR 게이트를 적용합니다. Supabase는 PostgreSQL 기반의 선택 가능한 연동이며, Lovable 내부 지침은 안내이고 PR 게이트가 강제 지점입니다. |
 
 Git 저장소이고 기존 Hook 설정과 충돌하지 않는 경우에는 커밋 전에 `gg verify --hook`을 실행하는 Hook도 적용합니다. 기존 Hook이 있으면 덮어쓰지 않고 수동 확인이 필요하다고 알려줍니다.
 

@@ -34,8 +34,8 @@ function Invoke-Harness([string[]]$Arguments) {
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = if ($isDemonstration) { "VibeCode Harness Manager - Demonstration" } else { "VibeCode Harness Manager" }
-$form.Size = New-Object System.Drawing.Size(720, 610)
-$form.MinimumSize = New-Object System.Drawing.Size(720, 610)
+$form.Size = New-Object System.Drawing.Size(720, 630)
+$form.MinimumSize = New-Object System.Drawing.Size(720, 630)
 $form.StartPosition = "CenterScreen"
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
 
@@ -44,7 +44,7 @@ if ($isDemonstration) {
   $demoWarning.Text = "UNSIGNED DEMONSTRATION BUILD - For validation only. Install the institutionally signed release for production."
   $demoWarning.ForeColor = [System.Drawing.Color]::DarkRed
   $demoWarning.AutoSize = $true
-  $demoWarning.Location = New-Object System.Drawing.Point(24, 574)
+  $demoWarning.Location = New-Object System.Drawing.Point(24, 570)
   $form.Controls.Add($demoWarning)
 }
 
@@ -79,9 +79,9 @@ $browse.Location = New-Object System.Drawing.Point(596, 113)
 $form.Controls.Add($browse)
 
 $toolsGroup = New-Object System.Windows.Forms.GroupBox
-$toolsGroup.Text = "개발 도구"
+$toolsGroup.Text = "개발 도구 (복수 선택 가능)"
 $toolsGroup.Location = New-Object System.Drawing.Point(26, 156)
-$toolsGroup.Size = New-Object System.Drawing.Size(670, 200)
+$toolsGroup.Size = New-Object System.Drawing.Size(670, 224)
 $form.Controls.Add($toolsGroup)
 
 $toolDefinitions = @(
@@ -98,9 +98,11 @@ for ($index = 0; $index -lt $toolDefinitions.Count; $index += 1) {
   $check = New-Object System.Windows.Forms.CheckBox
   $check.Text = "$($item.Label) — $($item.Detail)"
   $check.Tag = $item.Id
-  $check.AutoSize = $true
-  $left = 16 + (320 * ($index % 2))
-  $top = 28 + (48 * [math]::Floor($index / 2))
+  $check.AutoSize = $false
+  $check.AutoEllipsis = $true
+  $check.Size = New-Object System.Drawing.Size(630, 26)
+  $left = 16
+  $top = 26 + (31 * $index)
   $check.Location = New-Object System.Drawing.Point($left, $top)
   $toolsGroup.Controls.Add($check)
   $toolBoxes[$item.Id] = $check
@@ -109,6 +111,7 @@ for ($index = 0; $index -lt $toolDefinitions.Count; $index += 1) {
 $profileLabel = New-Object System.Windows.Forms.Label
 $profileLabel.Text = "개발 언어 정책"
 $profileLabel.AutoSize = $true
+$profileLabel.Visible = $false
 $profileLabel.Location = New-Object System.Drawing.Point(26, 378)
 $form.Controls.Add($profileLabel)
 
@@ -120,27 +123,35 @@ $profile.Size = New-Object System.Drawing.Size(420, 28)
 [void]$profile.Items.Add("typescript_postgres — Lovable/PostgreSQL 엄격형")
 [void]$profile.Items.Add("node_web — JavaScript 웹/API")
 [void]$profile.Items.Add("python_internal — Python 업무자동화")
-$profile.SelectedIndex = 0
+$profile.SelectedIndex = 1
+$profile.Visible = $false
 $form.Controls.Add($profile)
 
 $policyHint = New-Object System.Windows.Forms.Label
 $policyHint.Text = "Lovable을 선택하면 TypeScript/PostgreSQL 엄격형이 자동으로 적용됩니다. Supabase는 선택 가능한 PostgreSQL 연동입니다."
 $policyHint.AutoSize = $true
+$policyHint.Visible = $false
 $policyHint.Location = New-Object System.Drawing.Point(26, 433)
 $form.Controls.Add($policyHint)
+
+$policyInfo = New-Object System.Windows.Forms.Label
+$policyInfo.Text = "공통 개발 정책: JavaScript · TypeScript · PostgreSQL (자동 적용)"
+$policyInfo.AutoSize = $true
+$policyInfo.Location = New-Object System.Drawing.Point(26, 398)
+$form.Controls.Add($policyInfo)
 
 $apply = New-Object System.Windows.Forms.Button
 $apply.Text = "프로젝트에 적용"
 $apply.Size = New-Object System.Drawing.Size(150, 34)
-$apply.Location = New-Object System.Drawing.Point(26, 470)
+$apply.Location = New-Object System.Drawing.Point(26, 430)
 $form.Controls.Add($apply)
 
 $status = New-Object System.Windows.Forms.TextBox
 $status.Multiline = $true
 $status.ReadOnly = $true
 $status.ScrollBars = "Vertical"
-$status.Location = New-Object System.Drawing.Point(192, 470)
-$status.Size = New-Object System.Drawing.Size(504, 94)
+$status.Location = New-Object System.Drawing.Point(192, 430)
+$status.Size = New-Object System.Drawing.Size(504, 120)
 $status.Text = "폴더와 도구를 선택한 뒤 적용하세요."
 $form.Controls.Add($status)
 

@@ -169,7 +169,7 @@ gg restore --project <폴더> --backup <백업번호>
 
 - 지원 도구는 6종으로 확대 확인: Codex · Claude Code · Google Antigravity ·
   Claude Desktop · ChatGPT Desktop · Lovable(+GitHub). 본문 3종 목록을 대체한다.
-- Lovable 은 `typescript_postgres`(TypeScript·PostgreSQL 엄격형) 프로파일 + GitHub
+- Lovable 은 `typescript_postgres`(JavaScript·TypeScript·PostgreSQL 공통형) 프로파일 + GitHub
   PR 게이트 전제로 동작한다. Supabase 는 기본이 아니라 선택 통합(legacy 별칭)이다.
   Lovable·Supabase 의 공공 실사용 허용 여부는 보안부서 정책 확인 대기 —
   확인 전까지 포털 안내 화면에는 지원 도구로 표기하지 않는다.

@@ -62,7 +62,7 @@ TypeScript 웹 도구를 Codex와 Claude Code에 적용하는 예시다.
 | `--tools` | `codex`, `claude`, `antigravity`, `claude-desktop`, `chatgpt-desktop`, `lovable`, `both`, `all` | 사용할 AI 코딩 도구 또는 연동 방식 |
 | `--runtime` | `python_internal` | Python 내부 업무·자동화 |
 |  | `node_web` | JavaScript 기반 웹·API |
-|  | `typescript_postgres` | Lovable 및 PostgreSQL 계열용 TypeScript 엄격 프로필 (`typescript_supabase`는 기존 프로젝트 호환 별칭) |
+|  | `typescript_postgres` | JavaScript·TypeScript·PostgreSQL 공통 프로필 (`typescript_supabase`는 기존 프로젝트 호환 별칭) |
 |  | `typescript_web` | TypeScript 기반 웹·업무 도구 |
 | `--level` | `L1`, `L2`, `L3` | 안내, 검증, 릴리스 준비 수준 |
 
@@ -124,7 +124,7 @@ TypeScript 웹 도구를 Codex와 Claude Code에 적용하는 예시다.
 
 Claude Desktop 및 ChatGPT/Codex Desktop은 프로젝트 안내 문서와 공통 Git 게이트로 지원한다. 데스크톱 앱의 모든 파일 작업을 사전 차단한다고 주장하지 않으며, `gg build`와 Git 커밋·PR 검증이 언어·런타임 정책의 강제 지점이다.
 
-Lovable은 `--tools lovable --runtime typescript_postgres`로 시작한다. 하네스는 TypeScript/TSX 구현과 PostgreSQL SQL 마이그레이션을 허용한다. Supabase를 연결한 경우 Edge Function은 TypeScript만 허용한다. 하네스는 GitHub PR 검증 워크플로와 `VIBECODE-LOVABLE.md`를 만들며, Lovable은 전용 작업 브랜치에 동기화하고 통과한 PR만 `main`에 병합한다.
+Lovable은 `--tools lovable --runtime typescript_postgres`로 시작한다. 하네스는 JavaScript·TypeScript 구현과 PostgreSQL SQL 마이그레이션을 허용한다. Supabase를 연결한 경우에도 Edge Function 구현은 JavaScript 또는 TypeScript 범위에서 관리한다. 하네스는 GitHub PR 검증 워크플로와 `VIBECODE-LOVABLE.md`를 만들며, Lovable은 전용 작업 브랜치에 동기화하고 통과한 PR만 `main`에 병합한다.
 
 ## 문제가 생겼을 때
 
