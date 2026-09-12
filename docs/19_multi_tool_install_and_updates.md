@@ -4,7 +4,7 @@
 
 공식 Windows 설치본은 Node.js, Python, `vibecode-checker`, `gg.cmd`를 함께 포함한다. 사용자는 서명된 EXE를 설치한 뒤 시작 메뉴의 **VibeCode Harness 프로젝트 시작**을 선택하거나 `gg init --interactive`를 실행한다. 이 흐름에서 사용자가 정할 것은 프로젝트 폴더, 사용할 AI 도구, 개발 유형, 점검 수준뿐이다.
 
-Codex, Claude Code, Google Antigravity 자체의 설치와 계정 로그인은 각 제품의 라이선스·조직 정책에 속하므로 하네스가 대신 설치하거나 로그인하지 않는다. 하네스는 선택된 도구가 아직 없으면 “구성 적용됨 / 도구 설치 필요”로 안내한다.
+Codex와 Claude Code 자체의 설치와 계정 로그인은 각 제품의 라이선스·조직 정책에 속하므로 하네스가 대신 설치하거나 로그인하지 않는다. 하네스는 선택된 도구가 아직 없으면 “구성 적용됨 / 도구 설치 필요”로 안내한다.
 
 ## 프로젝트 다중 적용
 
@@ -17,15 +17,14 @@ project/
   .codex/vibecode-harness.md         Codex 보조 지침
   CLAUDE.md                          Claude Code 지침
   .claude/settings.json              Claude Code PreToolUse 훅
-  .agents/plugins/vibecode-harness/  Antigravity 플러그인
   evidence/                          기획·설계·검증 증적
 ```
 
-Antigravity 플러그인에는 규칙, 작업 스킬, `PreToolUse` 훅이 들어간다. 훅은 지원하지 않는 언어와 직접 패키지 설치 명령을 차단한다. Codex는 프로젝트 지침을 적용하고, Claude Code와 Antigravity는 지침에 더해 작업 전 훅을 적용한다. 어느 도구를 쓰더라도 최종 검증 기준은 공통 `gg build`, `gg verify`다.
+Codex는 프로젝트 지침을 적용하고, Claude Code는 지침에 더해 작업 전 훅을 적용한다. 어느 도구를 쓰더라도 최종 검증 기준은 공통 `gg build`, `gg verify`다.
 
-기존 `AGENTS.md`, `CLAUDE.md`, Claude 설정, Antigravity의 동일 이름 플러그인은 덮어쓰지 않는다. 기존 Antigravity 플러그인이 있으면 `doctor`가 복구 필요 상태를 보여 주며, 사용자는 내용을 확인한 뒤 병합 또는 재적용한다.
+기존 `AGENTS.md`, `CLAUDE.md`, Claude 설정은 덮어쓰지 않는다.
 
-`both`는 기존 호환성을 위해 Codex+Claude Code를 뜻한다. `all`은 Codex, Claude Code, Google Antigravity, Claude Desktop, ChatGPT/Codex Desktop, Lovable+GitHub의 여섯 도구 전체를 뜻한다. 모든 도구 조합의 기본 개발 언어 정책은 JavaScript·TypeScript·PostgreSQL 공통형이다. Supabase는 PostgreSQL 기반의 선택 가능한 Lovable 연동이며, 직접 운영·관리형 PostgreSQL도 같은 언어 정책으로 사용할 수 있다. CLI에서는 `--tools codex,antigravity`처럼 필요한 조합도 쓸 수 있다.
+`both`는 기존 호환성을 위해 Codex+Claude Code를 뜻한다. `all`은 Codex, Claude Code, Claude Desktop, ChatGPT/Codex Desktop, Lovable+GitHub의 다섯 도구 전체를 뜻한다. 모든 도구 조합의 기본 개발 언어 정책은 Python·JavaScript·TypeScript·PyPI·npm 기관 표준형(`gg_standard`)이다. Lovable은 이 안에서 TypeScript 작업을 만들고, Python 서비스는 동일 프로젝트의 승인된 PyPI 정책을 따른다. CLI에서는 `--tools codex,claude`처럼 필요한 조합도 쓸 수 있다.
 
 ## 공식 EXE 릴리스
 

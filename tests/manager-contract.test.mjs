@@ -22,13 +22,13 @@ test("Harness Manager applies selected tools without collecting tool credentials
   const source = await readFile(manager, "utf8");
   assert.match(source, /Get-ProjectLock/);
   assert.match(source, /configure/);
-  assert.match(source, /typescript_postgres/);
+  assert.match(source, /gg_standard/);
   assert.match(source, /claude-desktop/);
   assert.match(source, /chatgpt-desktop/);
   assert.match(source, /lovable/);
   assert.match(source, /개발 도구 \(복수 선택 가능\)/);
-  assert.match(source, /JavaScript · TypeScript · PostgreSQL \(자동 적용\)/);
-  assert.match(source, /\$profile\.SelectedIndex = 1/);
+  assert.match(source, /\$profile\.SelectedIndex = 0/);
+  assert.match(source, /Python/);
   assert.match(source, /\$profile\.Visible = \$false/);
   assert.match(source, /\$top = 26 \+ \(31 \* \$index\)/);
   assert.doesNotMatch(source, /New-Object System\.Drawing\.Point\(16 \+/);

@@ -19,5 +19,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # gg_standard and python_internal projects must have a real Python
+      # runtime in CI. Project dependencies are deliberately not restored by
+      # this generic workflow: they must come from the institution-approved,
+      # locked dependency restore step for that repository.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: Verify project language policy and tests
         run: node .vibecode-harness/bin/gg.mjs verify --project . --run-tests

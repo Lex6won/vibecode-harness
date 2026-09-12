@@ -59,8 +59,9 @@ TypeScript 웹 도구를 Codex와 Claude Code에 적용하는 예시다.
 
 | 항목 | 값 | 의미 |
 |---|---|---|
-| `--tools` | `codex`, `claude`, `antigravity`, `claude-desktop`, `chatgpt-desktop`, `lovable`, `both`, `all` | 사용할 AI 코딩 도구 또는 연동 방식 |
+| `--tools` | `codex`, `claude`, `claude-desktop`, `chatgpt-desktop`, `lovable`, `both`, `all` | 사용할 AI 코딩 도구 또는 연동 방식 |
 | `--runtime` | `python_internal` | Python 내부 업무·자동화 |
+|  | `gg_standard` | 기관 표준: Python·JavaScript·TypeScript, PyPI·npm을 동등하게 사용 |
 |  | `node_web` | JavaScript 기반 웹·API |
 |  | `typescript_postgres` | JavaScript·TypeScript·PostgreSQL 공통 프로필 (`typescript_supabase`는 기존 프로젝트 호환 별칭) |
 |  | `typescript_web` | TypeScript 기반 웹·업무 도구 |

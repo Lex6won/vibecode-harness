@@ -16,7 +16,7 @@ GitHub `main`의 변경은 개발 변경일 뿐이다. 사용자 PC에 배포되
 
 | 단계 | 책임자 | 확인·승인 내용 | 남길 증적 |
 |---|---|---|---|
-| 1. 기능 후보 확정 | 서비스 오너 | 기능 범위, 지원 도구(Codex·Claude Code·Antigravity), 사용자 안내 | 태그·변경 요약 |
+| 1. 기능 후보 확정 | 서비스 오너 | 기능 범위, 지원 도구(Codex·Claude Code·Desktop·GitHub 연동), 사용자 안내 | 태그·변경 요약 |
 | 2. 보안 검토 | 보안 또는 AX 담당 | 체커 결과, 의존성 점검, 정책 변경, 개인정보·비밀값 미포함 | 체커 보고서·검토 기록 |
 | 3. 운영 검토 | 운영 담당 | Windows 신규 설치, 시작 메뉴의 프로젝트 설정, 업데이트·복구·롤백 가능 여부 | 설치 시험 결과 |
 | 4. 릴리스 승인 | 릴리스 관리자 | 신뢰된 번들 서명, 코드서명 대상, SHA-256, 게시 대상 URL | 승인 기록·서명 정보 |
@@ -32,7 +32,7 @@ GitHub `main`의 변경은 개발 변경일 뿐이다. 사용자 PC에 배포되
 4. `node bin/gg.mjs bundle verify --bundle <번들> --trust <기관 공개키 목록>`이 `verified`인지 확인한다.
 5. `scripts/build-windows-installer.ps1`로 EXE를 만들고 Authenticode 서명·검증한다.
 6. `node scripts/release-preflight.mjs --tag vX.Y.Z --bundle <번들> --trust <공개키 목록> --installer <EXE>`로 최종 준비 상태와 EXE SHA-256을 기록한다.
-7. 격리된 Windows PC에서 EXE 신규 설치, **VibeCode Harness 프로젝트 시작**, `gg doctor`, Codex·Claude Code·Antigravity 각각의 프로젝트 적용을 확인한다.
+7. 격리된 Windows PC에서 EXE 신규 설치, **VibeCode Harness 프로젝트 시작**, `gg doctor`, Codex·Claude Code·Desktop·GitHub 연동 각각의 프로젝트 적용을 확인한다.
 8. 승인 기록을 완료한 뒤에만 포털의 `release-index.json`에 EXE URL·버전·SHA-256·`authenticode_verified`·릴리스 노트를 게시한다.
 
 ## 업데이트와 롤백

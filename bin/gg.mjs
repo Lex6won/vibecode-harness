@@ -106,7 +106,6 @@ const POLICY_PROFILES_PATH = join(HARNESS_ROOT, "shared", "policy-profiles.json"
 const ROOT_PACKAGE_POLICY_PATH = join(HARNESS_ROOT, "shared", "references", "package-policy.json");
 const CODEX_TEMPLATE_PATH = join(HARNESS_ROOT, "adapters", "codex", "AGENTS.template.md");
 const CLAUDE_TEMPLATE_PATH = join(HARNESS_ROOT, "adapters", "claude-code", "CLAUDE.template.md");
-const ANTIGRAVITY_ADAPTER_PATH = join(HARNESS_ROOT, "adapters", "antigravity");
 const CI_TEMPLATE_PATH = join(HARNESS_ROOT, "templates", "vibecode-harness-ci.yml");
 const TRUST_PATH = join(HARNESS_ROOT, "shared", "trust", "approved-signers.json");
 const RELEASE_INTEGRITY_PATH = join(HARNESS_ROOT, "lib", "release-integrity.mjs");
@@ -123,7 +122,6 @@ const IGNORED_DIRECTORIES = new Set([".git", ".githooks", ".vibecode-harness", "
 const TOOL_NAMES = Object.freeze({
   codex: "codex",
   claude: "claude-code",
-  antigravity: "google-antigravity",
   "claude-desktop": "claude-desktop",
   "chatgpt-desktop": "chatgpt-codex-desktop",
   "codex-desktop": "chatgpt-codex-desktop",
@@ -165,9 +163,9 @@ function usage() {
   print(`바이브코드 하네스 실행기
 
 사용법:
-  node bin/gg.mjs init --project <폴더> [--tools codex|claude|antigravity|claude-desktop|chatgpt-desktop|lovable|both|all|codex,claude] [--runtime gg_standard|python_internal|node_web|typescript_web|typescript_postgres] [--level L1|L2|L3] [--ci]
+  node bin/gg.mjs init --project <폴더> [--tools codex|claude|claude-desktop|chatgpt-desktop|lovable|both|all|codex,claude] [--runtime gg_standard|python_internal|node_web|typescript_web|typescript_postgres] [--level L1|L2|L3] [--ci]
   node bin/gg.mjs init --interactive
-  node bin/gg.mjs configure --project <folder> [--tools codex,claude,antigravity] [--remove codex,claude,antigravity]
+  node bin/gg.mjs configure --project <folder> [--tools codex,claude,claude-desktop,chatgpt-desktop,lovable] [--remove codex,claude,claude-desktop,chatgpt-desktop,lovable]
   node bin/gg.mjs update --project <폴더>
   node bin/gg.mjs migrate --project <폴더> --runtime gg_standard|python_internal|node_web|typescript_web|typescript_postgres [--level L1|L2|L3] [--force]
   node bin/gg.mjs doctor [--project <폴더>]
@@ -437,27 +435,18 @@ async function policyCheck(project, lock) {
     if (!(await pathExists(localHook))) failures.push("Claude Code 훅 사본이 없습니다. 승인된 하네스를 다시 적용하세요.");
     else if (lock.claude_hook_sha256 && (await sha256(localHook)) !== lock.claude_hook_sha256) failures.push("Claude Code 훅 사본이 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
   }
-  const antigravityHook = join(project, ".vibecode-harness", "bin", "antigravity-pre-tool.mjs");
-  if (lock.tools?.includes("google-antigravity")) {
-    const plugin = join(project, ".agents", "plugins", "vibecode-harness");
-    const hooks = join(plugin, "hooks.json");
-    const rule = join(plugin, "rules", "vibecode-harness.md");
-    const skill = join(plugin, "skills", "vibecode-workflow", "SKILL.md");
-    if (!(await pathExists(antigravityHook))) failures.push("Google Antigravity 훅 사본이 없습니다. 승인된 하네스를 다시 적용하세요.");
-    else if (lock.antigravity_hook_sha256 && (await sha256(antigravityHook)) !== lock.antigravity_hook_sha256) failures.push("Google Antigravity 훅 사본이 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
-    if (!(await pathExists(join(plugin, "plugin.json"))) || !(await pathExists(rule)) || !(await pathExists(skill))) {
-      failures.push("Google Antigravity 프로젝트 플러그인이 불완전합니다. 승인된 하네스를 다시 적용하세요.");
-    } else if (!(await pathExists(hooks)) || !(await readFile(hooks, "utf8")).includes("antigravity-pre-tool.mjs")) {
-      failures.push("Google Antigravity 사전 실행 훅이 적용되지 않았습니다. 승인된 하네스를 다시 적용하세요.");
-    }
+  const legacyPlugin = join(project, ".agents", "plugins", "vibecode-harness");
+  if ((lock.retired_adapters_pending_cleanup || []).includes("google-antigravity") && await pathExists(legacyPlugin)) {
+    failures.push("Retired Google Antigravity plugin remains in this project. Remove or independently review it before verification can continue.");
   }
   for (const tool of Object.keys(GUIDANCE_ADAPTERS)) {
     if (!lock.tools?.includes(tool)) continue;
     const adapter = GUIDANCE_ADAPTERS[tool];
     if (!(await pathExists(join(project, adapter.target)))) failures.push(`Required ${tool} support guidance is missing. Reapply the approved harness.`);
   }
-  if (lock.tools?.includes(TOOL_NAMES.lovable) && !(await pathExists(join(project, ".github", "workflows", "vibecode-harness.yml")))) {
-    failures.push("Lovable GitHub support requires the VibeCode pull-request policy workflow.");
+  const needsPullRequestGate = (lock.tools || []).some((tool) => Object.hasOwn(GUIDANCE_ADAPTERS, tool));
+  if (needsPullRequestGate && !(await pathExists(join(project, ".github", "workflows", "vibecode-harness.yml")))) {
+    failures.push("Desktop and GitHub integrations require the VibeCode pull-request policy workflow.");
   }
   const policyProfile = lock.policy_profile || policyProfileForRuntime(lock.runtime_profile);
   if (!getPolicyProfile(policyProfile)) failures.push(`Unknown language policy profile: ${policyProfile}`);
@@ -805,21 +794,13 @@ function selectedTools(value) {
   if (!tokens.length) throw new Error("--tools에 하나 이상의 AI 도구를 지정하세요.");
   const tools = tokens.map((token) => TOOL_NAMES[token]);
   if (tools.some((tool) => !tool)) {
-    throw new Error("--tools는 codex, claude, antigravity, claude-desktop, chatgpt-desktop, lovable, both, all 또는 쉼표로 구분한 조합이어야 합니다.");
+    throw new Error("--tools는 codex, claude, claude-desktop, chatgpt-desktop, lovable, both, all 또는 쉼표로 구분한 조합이어야 합니다.");
   }
   return [...new Set(tools)];
 }
 
 function includesTool(tools, name) {
   return tools.includes(name);
-}
-
-async function applyAntigravityAdapter(project) {
-  const destination = join(project, ".agents", "plugins", "vibecode-harness");
-  if (await pathExists(destination)) return "existing_plugin_preserved";
-  await mkdir(dirname(destination), { recursive: true });
-  await cp(ANTIGRAVITY_ADAPTER_PATH, destination, { recursive: true, force: false, errorOnExist: true });
-  return "created";
 }
 
 async function applyGuidanceAdapter(project, tool) {
@@ -855,11 +836,9 @@ async function interactiveInitCommand(options) {
       : await prompt.question(`프로젝트 폴더 [${process.cwd()}]: `);
     const tools = options.tools && options.tools !== true
       ? options.tools
-      : await prompt.question("AI 도구 (codex, claude, antigravity, claude-desktop, chatgpt-desktop, lovable, all) [all]: ");
+      : await prompt.question("AI 도구 (codex, claude, claude-desktop, chatgpt-desktop, lovable, all) [all]: ");
     const selectedInput = String(tools || "all").trim().toLowerCase();
-    const defaultRuntime = selectedInput === "all" || selectedInput.split(",").includes("lovable") || selectedInput.split(",").includes("lovable-github")
-      ? "typescript_postgres"
-      : "typescript_web";
+    const defaultRuntime = "gg_standard";
     const runtime = options.runtime && options.runtime !== true
       ? options.runtime
       : await prompt.question(`프로젝트 유형 (gg_standard, typescript_postgres, typescript_web, node_web, python_internal) [${defaultRuntime}]: `);
@@ -892,9 +871,11 @@ async function installHarnessFiles(project) {
   await cp(POLICY_PROFILES_PATH, join(harnessDir, "policy", "policy-profiles.json"));
   await cp(ROOT_PACKAGE_POLICY_PATH, join(harnessDir, "policy", "package-policy.json"));
   await cp(join(HARNESS_ROOT, "adapters"), join(harnessDir, "adapters"), { recursive: true });
+  // The source tree may retain an empty directory after a retired adapter is
+  // removed on Windows. Never ship or recreate that adapter in a project.
+  await rm(join(harnessDir, "adapters", "antigravity"), { recursive: true, force: true });
   await cp(join(HARNESS_ROOT, "bin", "gg.mjs"), join(harnessDir, "bin", "gg.mjs"));
   await cp(join(HARNESS_ROOT, "bin", "claude-pre-tool.mjs"), join(harnessDir, "bin", "claude-pre-tool.mjs"));
-  await cp(join(HARNESS_ROOT, "bin", "antigravity-pre-tool.mjs"), join(harnessDir, "bin", "antigravity-pre-tool.mjs"));
   await cp(RELEASE_INTEGRITY_PATH, join(harnessDir, "lib", "release-integrity.mjs"));
   await cp(POLICY_ENGINE_PATH, join(harnessDir, "lib", "policy-engine.mjs"));
   await cp(CHECKER_EVIDENCE_PATH, join(harnessDir, "lib", "checker-evidence.mjs"));
@@ -912,19 +893,18 @@ async function harnessFileDigests(harnessDir) {
     release_integrity_sha256: await sha256(join(harnessDir, "lib", "release-integrity.mjs")),
     policy_engine_sha256: await sha256(join(harnessDir, "lib", "policy-engine.mjs")),
     checker_evidence_sha256: await sha256(join(harnessDir, "lib", "checker-evidence.mjs")),
-    claude_hook_sha256: await sha256(join(harnessDir, "bin", "claude-pre-tool.mjs")),
-    antigravity_hook_sha256: await sha256(join(harnessDir, "bin", "antigravity-pre-tool.mjs"))
+    claude_hook_sha256: await sha256(join(harnessDir, "bin", "claude-pre-tool.mjs"))
   };
 }
 
 async function initCommand(options) {
   const project = projectPath(options);
   const tools = selectedTools(options.tools || "both");
-  const requestedRuntime = options.runtime || (String(options.tools || "").trim().toLowerCase() === "all" ? "typescript_postgres" : "typescript_web");
+  const requestedRuntime = options.runtime || "gg_standard";
   const runtime = requestedRuntime === "typescript_supabase" ? "typescript_postgres" : requestedRuntime;
   const level = options.level || "L2";
   if (!MIGRATABLE_RUNTIMES.includes(runtime)) throw new Error("허용되지 않은 --runtime 값입니다.");
-  if (includesTool(tools, TOOL_NAMES.lovable) && runtime !== "typescript_postgres") throw new Error("Lovable GitHub projects require the typescript_postgres runtime profile.");
+  if (includesTool(tools, TOOL_NAMES.lovable) && !["gg_standard", "typescript_postgres"].includes(runtime)) throw new Error("Lovable GitHub projects require the gg_standard or typescript_postgres runtime profile.");
   if (!['L1', 'L2', 'L3'].includes(level)) throw new Error("--level은 L1, L2, L3 중 하나여야 합니다.");
   await mkdir(project, { recursive: true });
   const harnessDir = join(project, ".vibecode-harness");
@@ -975,11 +955,6 @@ async function initCommand(options) {
       }
     }
   }
-  let antigravityStatus = "not_selected";
-  if (includesTool(tools, TOOL_NAMES.antigravity)) {
-    antigravityStatus = await applyAntigravityAdapter(project);
-    lock.managed_adapters.antigravity_plugin = antigravityStatus === "created";
-  }
   const guidanceAdapters = {};
   for (const tool of tools.filter((item) => GUIDANCE_ADAPTERS[item])) {
     const status = await applyGuidanceAdapter(project, tool);
@@ -1015,7 +990,7 @@ async function initCommand(options) {
     }
   }
   let ci = "not_requested";
-  if (options.ci || includesTool(tools, TOOL_NAMES.lovable)) {
+  if (options.ci || tools.some((tool) => Object.hasOwn(GUIDANCE_ADAPTERS, tool))) {
     const workflowPath = join(project, ".github", "workflows", "vibecode-harness.yml");
     if (await pathExists(workflowPath)) ci = "existing_workflow_preserved";
     else {
@@ -1025,8 +1000,8 @@ async function initCommand(options) {
     }
   }
   await writeJson(lockPath, lock);
-  await writeReceipt(project, "init", { kind: "harness_init", runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, antigravity_plugin: antigravityStatus, guidance_adapters: guidanceAdapters });
-  print({ status: "initialized", project, runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, antigravity_plugin: antigravityStatus, guidance_adapters: guidanceAdapters, next: "gg doctor --project <프로젝트 폴더>" });
+  await writeReceipt(project, "init", { kind: "harness_init", runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, guidance_adapters: guidanceAdapters });
+  print({ status: "initialized", project, runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, guidance_adapters: guidanceAdapters, next: "gg doctor --project <프로젝트 폴더>" });
 }
 
 /**
@@ -1134,6 +1109,40 @@ async function updateCommand(options) {
   const lock = lockRecord.value;
   const harnessDir = join(project, ".vibecode-harness");
 
+  // Google Antigravity is no longer a supported adapter.  Older projects may
+  // still carry its copied plugin and lock metadata; retire only the plugin we
+  // created, and leave a user-owned plugin in place for explicit review.
+  const retiredAdapters = [];
+  const legacyAntigravity = "google-antigravity";
+  const legacyPlugin = join(project, ".agents", "plugins", "vibecode-harness");
+  const previousPendingRetirements = lock.retired_adapters_pending_cleanup || [];
+  const pendingRetirements = new Set(previousPendingRetirements);
+  if ((lock.tools || []).includes(legacyAntigravity) || pendingRetirements.has(legacyAntigravity)) {
+    const plugin = legacyPlugin;
+    if (lock.managed_adapters?.antigravity_plugin && await pathExists(plugin)) {
+      await rm(plugin, { recursive: true, force: false });
+      retiredAdapters.push(legacyAntigravity);
+      pendingRetirements.delete(legacyAntigravity);
+    } else if (await pathExists(plugin)) {
+      pendingRetirements.add(legacyAntigravity);
+      retiredAdapters.push(`${legacyAntigravity}:manual_plugin_review_required`);
+    } else {
+      pendingRetirements.delete(legacyAntigravity);
+    }
+    lock.tools = lock.tools.filter((tool) => tool !== legacyAntigravity);
+    delete lock.antigravity_hook_sha256;
+    if (lock.managed_adapters) delete lock.managed_adapters.antigravity_plugin;
+  }
+  for (const legacyPath of [
+    join(harnessDir, "bin", "antigravity-pre-tool.mjs"),
+    join(harnessDir, "adapters", "antigravity")
+  ]) {
+    if (await pathExists(legacyPath)) {
+      await rm(legacyPath, { recursive: true, force: true });
+      if (!retiredAdapters.includes(legacyAntigravity)) retiredAdapters.push(legacyAntigravity);
+    }
+  }
+
   const before = await harnessFileDigests(harnessDir).catch(() => ({}));
   await mkdir(join(harnessDir, "backups"), { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -1167,13 +1176,16 @@ async function updateCommand(options) {
     }
   }
 
-  const somethingChanged = changed.length > 0 || ["added", "migrated"].includes(claudeHook);
+  const pendingCleanupChanged = JSON.stringify([...pendingRetirements]) !== JSON.stringify(previousPendingRetirements);
+  const somethingChanged = changed.length > 0 || retiredAdapters.length > 0 || pendingCleanupChanged || ["added", "migrated"].includes(claudeHook);
+  if (pendingRetirements.size) lock.retired_adapters_pending_cleanup = [...pendingRetirements];
+  else delete lock.retired_adapters_pending_cleanup;
   const updated = { ...lock, ...after, updated_at: new Date().toISOString() };
   await writeJson(lockRecord.path, updated);
   const receipt = await writeReceipt(project, "update", {
     kind: "update", status: somethingChanged ? "updated" : "unchanged",
     runtime_profile: lock.runtime_profile, policy_profile: lock.policy_profile,
-    changed_files: changed, claude_hook: claudeHook
+    changed_files: changed, claude_hook: claudeHook, retired_adapters: retiredAdapters
   });
   print({
     status: somethingChanged ? "updated" : "unchanged",
@@ -1181,6 +1193,7 @@ async function updateCommand(options) {
     policy_profile: lock.policy_profile,
     changed_files: changed,
     claude_hook: claudeHook,
+    retired_adapters: retiredAdapters,
     receipt,
     next: somethingChanged ? "gg verify로 새 사본에서 검증하세요." : "이미 현재 번들과 같습니다."
   });
@@ -1196,7 +1209,7 @@ async function configureCommand(options) {
   const desired = options.tools ? new Set(selectedTools(options.tools)) : new Set(current);
   if (options.remove) for (const tool of selectedTools(options.remove)) desired.delete(tool);
   if (!desired.size) throw new Error("At least one AI tool must remain selected for a managed project.");
-  if (desired.has(TOOL_NAMES.lovable) && !["typescript_postgres", "typescript_supabase"].includes(lock.runtime_profile)) throw new Error("Lovable GitHub support requires an existing typescript_postgres project. Create or migrate the project with that policy profile first.");
+  if (desired.has(TOOL_NAMES.lovable) && !["gg_standard", "typescript_postgres", "typescript_supabase"].includes(lock.runtime_profile)) throw new Error("Lovable GitHub support requires an existing gg_standard or typescript_postgres project. Create or migrate the project with one of those policy profiles first.");
 
   const harnessDir = join(project, ".vibecode-harness");
   const changes = { added: [], removed: [], preserved: [] };
@@ -1231,13 +1244,6 @@ async function configureCommand(options) {
     changes.added.push("claude-code");
   }
 
-  if (desired.has(TOOL_NAMES.antigravity) && !current.has(TOOL_NAMES.antigravity)) {
-    const status = await applyAntigravityAdapter(project);
-    lock.managed_adapters.antigravity_plugin = status === "created";
-    changes.added.push("google-antigravity");
-    if (status !== "created") changes.preserved.push("google-antigravity-existing-plugin");
-  }
-
   for (const tool of Object.keys(GUIDANCE_ADAPTERS)) {
     if (!desired.has(tool) || current.has(tool)) continue;
     const status = await applyGuidanceAdapter(project, tool);
@@ -1245,13 +1251,13 @@ async function configureCommand(options) {
     changes.added.push(tool);
     if (status === "existing_guidance_preserved") changes.preserved.push(`${tool}-guidance`);
   }
-  if (desired.has(TOOL_NAMES.lovable) && !current.has(TOOL_NAMES.lovable)) {
+  if (desired.size && [...desired].some((tool) => Object.hasOwn(GUIDANCE_ADAPTERS, tool))) {
     const workflowPath = join(project, ".github", "workflows", "vibecode-harness.yml");
     if (!(await pathExists(workflowPath))) {
       await mkdir(dirname(workflowPath), { recursive: true });
       await cp(CI_TEMPLATE_PATH, workflowPath);
     } else {
-      changes.preserved.push("lovable-existing-ci-workflow");
+      changes.preserved.push("existing-pr-gate-workflow");
     }
   }
 
@@ -1283,14 +1289,6 @@ async function configureCommand(options) {
     changes.preserved.push("CLAUDE.md");
     delete lock.managed_adapters.claude_companion;
     changes.removed.push("claude-code");
-  }
-
-  if (!desired.has(TOOL_NAMES.antigravity) && current.has(TOOL_NAMES.antigravity)) {
-    const plugin = join(project, ".agents", "plugins", "vibecode-harness");
-    if (lock.managed_adapters.antigravity_plugin && await pathExists(plugin)) await rm(plugin, { recursive: true, force: false });
-    else changes.preserved.push("google-antigravity-plugin");
-    delete lock.managed_adapters.antigravity_plugin;
-    changes.removed.push("google-antigravity");
   }
 
   for (const tool of Object.keys(GUIDANCE_ADAPTERS)) {
@@ -1335,18 +1333,6 @@ async function doctorCommand(options) {
     } catch { /* reported below */ }
     if (!(await pathExists(claude)) || hookState === "missing") adapters.claude_code = "repair_required";
     else adapters.claude_code = hookState === "legacy" ? "update_required" : "applied";
-  }
-  if (lock?.value.tools.includes("google-antigravity")) {
-    const plugin = join(project, ".agents", "plugins", "vibecode-harness");
-    const manifest = join(plugin, "plugin.json");
-    const hooks = join(plugin, "hooks.json");
-    const rule = join(plugin, "rules", "vibecode-harness.md");
-    const skill = join(plugin, "skills", "vibecode-workflow", "SKILL.md");
-    let hookApplied = false;
-    try { hookApplied = (await readFile(hooks, "utf8")).includes("antigravity-pre-tool.mjs"); } catch { /* reported below */ }
-    adapters.google_antigravity = (await pathExists(manifest)) && (await pathExists(rule)) && (await pathExists(skill)) && hookApplied
-      ? "applied"
-      : "repair_required";
   }
   for (const tool of Object.keys(GUIDANCE_ADAPTERS)) {
     if (!lock?.value.tools.includes(tool)) continue;

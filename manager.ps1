@@ -88,10 +88,9 @@ $form.Controls.Add($toolsGroup)
 $toolDefinitions = @(
   @{ Id = "codex"; Label = "Codex"; Detail = "프로젝트 지침 + Git 게이트" },
   @{ Id = "claude"; Label = "Claude Code"; Detail = "프로젝트 지침 + 작업 전 차단 훅" },
-  @{ Id = "antigravity"; Label = "Google Antigravity"; Detail = "규칙 + 작업 전 차단 훅" },
   @{ Id = "claude-desktop"; Label = "Claude Desktop"; Detail = "프로젝트 안내 + Git 게이트" },
   @{ Id = "chatgpt-desktop"; Label = "ChatGPT/Codex Desktop"; Detail = "프로젝트 안내 + Git 게이트" },
-  @{ Id = "lovable"; Label = "Lovable + GitHub"; Detail = "TypeScript/PostgreSQL + PR 게이트" }
+  @{ Id = "lovable"; Label = "Lovable + GitHub"; Detail = "TypeScript 작업 + PR 게이트" }
 )
 $toolBoxes = @{}
 for ($index = 0; $index -lt $toolDefinitions.Count; $index += 1) {
@@ -120,23 +119,24 @@ $profile = New-Object System.Windows.Forms.ComboBox
 $profile.DropDownStyle = "DropDownList"
 $profile.Location = New-Object System.Drawing.Point(26, 400)
 $profile.Size = New-Object System.Drawing.Size(420, 28)
+[void]$profile.Items.Add("gg_standard — 기관 표준 (Python · JavaScript · TypeScript)")
 [void]$profile.Items.Add("typescript_web — TypeScript 웹")
-[void]$profile.Items.Add("typescript_postgres — Lovable/PostgreSQL 엄격형")
+[void]$profile.Items.Add("typescript_postgres — JavaScript · TypeScript · PostgreSQL")
 [void]$profile.Items.Add("node_web — JavaScript 웹/API")
 [void]$profile.Items.Add("python_internal — Python 업무자동화")
-$profile.SelectedIndex = 1
+$profile.SelectedIndex = 0
 $profile.Visible = $false
 $form.Controls.Add($profile)
 
 $policyHint = New-Object System.Windows.Forms.Label
-$policyHint.Text = "Lovable을 선택하면 TypeScript/PostgreSQL 엄격형이 자동으로 적용됩니다. Supabase는 선택 가능한 PostgreSQL 연동입니다."
+$policyHint.Text = "기관 표준은 Python · JavaScript · TypeScript를 함께 허용합니다. Lovable은 TypeScript 작업을 만들며, Python 서비스는 동일 프로젝트의 승인된 정책과 PyPI 게이트를 따라야 합니다."
 $policyHint.AutoSize = $true
 $policyHint.Visible = $false
 $policyHint.Location = New-Object System.Drawing.Point(26, 433)
 $form.Controls.Add($policyHint)
 
 $policyInfo = New-Object System.Windows.Forms.Label
-$policyInfo.Text = "공통 개발 정책: JavaScript · TypeScript · PostgreSQL (자동 적용)"
+$policyInfo.Text = "기관 표준 개발 정책: Python · JavaScript · TypeScript · PyPI · npm (자동 적용)"
 $policyInfo.AutoSize = $true
 $policyInfo.Location = New-Object System.Drawing.Point(26, 398)
 $form.Controls.Add($policyInfo)
@@ -165,19 +165,14 @@ $browse.Add_Click({
     if ($null -ne $lock) {
       foreach ($box in $toolBoxes.Values) { $box.Checked = $false }
       foreach ($tool in @($lock.tools)) {
-        $mapped = switch ($tool) { "claude-code" { "claude" } "google-antigravity" { "antigravity" } "chatgpt-codex-desktop" { "chatgpt-desktop" } "lovable-github" { "lovable" } default { $tool } }
+        $mapped = switch ($tool) { "claude-code" { "claude" } "chatgpt-codex-desktop" { "chatgpt-desktop" } "lovable-github" { "lovable" } default { $tool } }
         if ($toolBoxes.ContainsKey($mapped)) { $toolBoxes[$mapped].Checked = $true }
       }
-      $runtimeIndex = @{ "typescript_web" = 0; "typescript_postgres" = 1; "typescript_supabase" = 1; "node_web" = 2; "python_internal" = 3 }[$lock.runtime_profile]
+      $runtimeIndex = @{ "gg_standard" = 0; "typescript_web" = 1; "typescript_postgres" = 2; "typescript_supabase" = 2; "node_web" = 3; "python_internal" = 4 }[$lock.runtime_profile]
       if ($null -ne $runtimeIndex) { $profile.SelectedIndex = $runtimeIndex }
       $status.Text = "기존 프로젝트 설정을 불러왔습니다. 변경 후 적용하면 하네스 소유 설정만 안전하게 바뀝니다."
     }
   }
-})
-
-$toolBoxes["lovable"].Add_CheckedChanged({
-  if ($toolBoxes["lovable"].Checked) { $profile.SelectedIndex = 1; $profile.Enabled = $false }
-  else { $profile.Enabled = $true }
 })
 
 $apply.Add_Click({
@@ -197,8 +192,8 @@ $apply.Add_Click({
     return
   }
   $runtime = ($profile.SelectedItem.ToString().Split(" ")[0])
-  if (($selected -contains "lovable") -and $runtime -ne "typescript_postgres") {
-    [System.Windows.Forms.MessageBox]::Show("Lovable은 TypeScript/PostgreSQL 엄격형 정책을 사용해야 합니다.", "VibeCode Harness", "OK", "Warning") | Out-Null
+  if (($selected -contains "lovable") -and $runtime -notin @("gg_standard", "typescript_postgres")) {
+    [System.Windows.Forms.MessageBox]::Show("Lovable 연동은 기관 표준 또는 TypeScript/PostgreSQL 정책을 사용해야 합니다.", "VibeCode Harness", "OK", "Warning") | Out-Null
     return
   }
   $tools = ($selected -join ",")
@@ -214,7 +209,7 @@ $apply.Add_Click({
     $projectPath.ReadOnly = $true
     $browse.Enabled = $false
     foreach ($box in $toolBoxes.Values) { $box.Enabled = $false }
-    $status.Text = "적용이 완료되었습니다.`r`n프로젝트: $project`r`n적용된 도구: $selectedLabels`r`n공통 정책: JavaScript · TypeScript · PostgreSQL`r`n`r`n이제 선택한 도구로 개발하세요. 개발이 끝나면 포털에서 서버 보안점검을 요청하세요."
+    $status.Text = "적용이 완료되었습니다.`r`n프로젝트: $project`r`n적용된 도구: $selectedLabels`r`n기관 표준 정책: Python · JavaScript · TypeScript · PyPI · npm`r`n`r`n이제 선택한 도구로 개발하세요. 개발이 끝나면 포털에서 서버 보안점검을 요청하세요."
     $apply.Text = "확인 후 닫기"
     $apply.Focus()
   } else {

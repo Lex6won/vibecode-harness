@@ -41,7 +41,7 @@ For a harness-only trial, use:
 & "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd" verify --project C:\work\my-service --run-tests
 ```
 
-`init` applies Codex `AGENTS.md`, Claude Code `CLAUDE.md` and pre-tool hook, plus the Google Antigravity workspace plugin (rules, skill, and pre-tool hook). Use `--tools both` for the existing Codex+Claude Code combination, or select individual tools with a comma-separated list. The executable gate permits Python, JavaScript, and TypeScript only, then checks runtime declarations, policy integrity, tests, and checker evidence. Project source and reports remain on the user PC.
+`init` applies Codex `AGENTS.md`, Claude Code `CLAUDE.md` and its pre-tool hook. Use `--tools both` for the existing Codex+Claude Code combination, or select individual tools with a comma-separated list. The executable gate permits Python, JavaScript, and TypeScript only, then checks runtime declarations, policy integrity, tests, and checker evidence. Project source and reports remain on the user PC.
 
 ## Pilot update
 
