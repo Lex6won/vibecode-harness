@@ -467,71 +467,120 @@ async function writeReceipt(project, name, payload) {
   return path;
 }
 
-async function runProjectTests(project, lock, options) {
-  const noTests = Boolean(options["no-tests"]);
-  if (noTests) {
+const TEST_NOT_CONFIGURED = Object.freeze({ status: "not_configured", reason: "실행할 테스트 명령이 없습니다. L2 이상에서는 테스트를 추가해야 합니다." });
+
+/**
+ * 테스트를 아예 실행하지 않기로 하는 사전 판단 — 축과 무관하다.
+ * 해당하면 그 결과를, 아니면 null 을 돌려준다.
+ */
+function testExecutionGate(lock, options) {
+  if (options["no-tests"]) {
     if (lock.level !== "L1") return { status: "blocked", reason: "L2 이상에서는 --no-tests를 사용할 수 없습니다." };
     return { status: "skipped", reason: "L1 안내 단계에서만 사용자 요청으로 테스트를 생략했습니다." };
   }
   if (options.hook) return { status: "deferred", reason: "Git 훅에서는 미검증 프로젝트의 테스트 명령을 실행하지 않습니다. CI 또는 사용자가 --run-tests로 명시 실행해야 합니다." };
-  const packageJson = join(project, "package.json");
-  if (await pathExists(packageJson)) {
-    const manifest = await readJson(packageJson);
-    if (manifest.scripts?.test) {
-      const declared = String(manifest.scripts.test).trim();
-      if (declared !== "node --test") {
-        return { status: "blocked", command: declared, reason: "승인된 기본 테스트 명령은 'node --test'뿐입니다. 사용자 확인과 격리 실행 정책을 적용하기 전에는 임의 npm script를 실행하지 않습니다." };
-      }
-      if (!options["run-tests"]) {
-        return { status: "confirmation_required", command: declared, reason: "테스트 실행은 프로젝트 코드를 실행합니다. 내용을 확인한 뒤 --run-tests로 명시 실행하세요." };
-      }
-      const npmCli = join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
-      if (!(await pathExists(npmCli))) {
-        return { status: "failed", command: "npm test", reason: "Node.js에 포함된 npm 실행기를 찾을 수 없습니다." };
-      }
-      const testEnvironment = { ...process.env };
-      delete testEnvironment.NODE_TEST_CONTEXT;
-      const result = await run(process.execPath, [npmCli, "test"], { cwd: project, env: testEnvironment });
-      return { status: result.code === 0 ? "passed" : "failed", command: "npm test", code: result.code, stderr: result.stderr.slice(-2000) };
-    }
-  }
-  const testsPath = join(project, "tests");
-  if (await pathExists(testsPath)) {
-    if (["python_internal", "gg_standard"].includes(lock.runtime_profile)) {
-      if (!options["run-tests"]) {
-        return { status: "confirmation_required", command: "python -m pytest -q", reason: "테스트 실행은 프로젝트 코드를 실행합니다. 내용을 확인한 뒤 --run-tests로 명시 실행하세요." };
-      }
-      const python = await pythonCommand();
-      if (!python) return { status: "blocked", reason: "Python 런타임을 찾을 수 없습니다. PyPI 축 테스트를 실행할 수 없습니다." };
-      const result = await run(python.command, ["-m", "pytest", "-q"], { cwd: project });
-      return { status: result.code === 0 ? "passed" : "failed", command: "python -m pytest -q", code: result.code, stderr: result.stderr.slice(-2000) };
-    }
-  }
-  return { status: "not_configured", reason: "실행할 테스트 명령이 없습니다. L2 이상에서는 테스트를 추가해야 합니다." };
+  return null;
 }
 
-/** gg_standard 는 두 축을 모두 돌린다 — 한쪽만 통과한 것을 통과로 부르지 않는다. */
+/**
+ * npm 축 — package.json 의 승인된 test script 만 근거로 삼는다.
+ *
+ * `tests/` 폴더나 `.py` 파일은 보지 않는다. 혼합 프로젝트에서 축이 서로의
+ * 판단 근거를 넘겨다보면 한 축이 다른 축의 명령을 대신 실행하게 된다.
+ */
+async function runNodeTests(project, options) {
+  const packageJson = join(project, "package.json");
+  if (!(await pathExists(packageJson))) return TEST_NOT_CONFIGURED;
+  const manifest = await readJson(packageJson);
+  if (!manifest.scripts?.test) return TEST_NOT_CONFIGURED;
+  const declared = String(manifest.scripts.test).trim();
+  if (declared !== "node --test") {
+    return { status: "blocked", command: declared, reason: "승인된 기본 테스트 명령은 'node --test'뿐입니다. 사용자 확인과 격리 실행 정책을 적용하기 전에는 임의 npm script를 실행하지 않습니다." };
+  }
+  if (!options["run-tests"]) {
+    return { status: "confirmation_required", command: declared, reason: "테스트 실행은 프로젝트 코드를 실행합니다. 내용을 확인한 뒤 --run-tests로 명시 실행하세요." };
+  }
+  const npmCli = join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+  if (!(await pathExists(npmCli))) {
+    return { status: "failed", command: "npm test", reason: "Node.js에 포함된 npm 실행기를 찾을 수 없습니다." };
+  }
+  const testEnvironment = { ...process.env };
+  delete testEnvironment.NODE_TEST_CONTEXT;
+  const result = await run(process.execPath, [npmCli, "test"], { cwd: project, env: testEnvironment });
+  return { status: result.code === 0 ? "passed" : "failed", command: "npm test", code: result.code, stderr: result.stderr.slice(-2000) };
+}
+
+/**
+ * PyPI 축이 실행될 프로젝트인지 판단한다.
+ *
+ * `tests/` 폴더만으로는 판단하지 않는다 — 승인된 npm 명령이 `node --test` 이고
+ * 그 기본 탐색 경로도 `tests/` 라서, 혼합 트랙에서 그 폴더는 어느 축의 것인지
+ * 말해주지 않는다. 선언 파일이 있어야 Python 프로젝트다.
+ *
+ * 단일 언어 트랙(python_internal)에서는 그 모호함이 없으므로 종전대로
+ * `tests/` 폴더도 근거로 인정한다 — 기존 프로젝트의 동작을 바꾸지 않는다.
+ */
+async function pythonTestsConfigured(project, { allowTestsDir }) {
+  for (const marker of ["pyproject.toml", "pytest.ini", "tox.ini"]) {
+    if (await pathExists(join(project, marker))) return true;
+  }
+  const setupCfg = join(project, "setup.cfg");
+  if (await pathExists(setupCfg)) {
+    const contents = await readFile(setupCfg, "utf8").catch(() => "");
+    if (/^\s*\[tool:pytest\]/m.test(contents)) return true;
+  }
+  return allowTestsDir ? pathExists(join(project, "tests")) : false;
+}
+
+/** PyPI 축 — package.json 존재 여부와 무관하게 동작한다. */
+async function runPythonTests(project, options, { allowTestsDir = false } = {}) {
+  if (!(await pythonTestsConfigured(project, { allowTestsDir }))) return TEST_NOT_CONFIGURED;
+  if (!options["run-tests"]) {
+    return { status: "confirmation_required", command: "python -m pytest -q", reason: "테스트 실행은 프로젝트 코드를 실행합니다. 내용을 확인한 뒤 --run-tests로 명시 실행하세요." };
+  }
+  const python = await pythonCommand();
+  if (!python) return { status: "blocked", reason: "Python 런타임을 찾을 수 없습니다. PyPI 축 테스트를 실행할 수 없습니다." };
+  const result = await run(python.command, ["-m", "pytest", "-q"], { cwd: project });
+  return { status: result.code === 0 ? "passed" : "failed", command: "python -m pytest -q", code: result.code, stderr: result.stderr.slice(-2000) };
+}
+
+/** 단일 언어 트랙 — 축이 하나뿐이므로 먼저 설정된 쪽을 쓴다. */
+async function runProjectTests(project, lock, options) {
+  const gate = testExecutionGate(lock, options);
+  if (gate) return gate;
+  const node = await runNodeTests(project, options);
+  if (node.status !== "not_configured") return node;
+  if (["python_internal", "gg_standard"].includes(lock.runtime_profile)) {
+    const python = await runPythonTests(project, options, { allowTestsDir: true });
+    if (python.status !== "not_configured") return python;
+  }
+  return TEST_NOT_CONFIGURED;
+}
+
+/**
+ * gg_standard 는 두 축을 각각 정확히 한 번 돌린다.
+ *
+ * 한쪽만 통과한 것을 통과로 부르지 않고, 돌지 않은 축도 결과에 남긴다 —
+ * 무엇이 실행되지 않았는지가 영수증에서 보여야 한다.
+ */
 async function runStandardTests(project, lock, options) {
-  const results = [];
-  const nodeConfigured = await pathExists(join(project, "package.json"));
-  if (nodeConfigured) {
-    results.push({ axis: "npm", ...(await runProjectTests(project, { ...lock, runtime_profile: "node_web" }, options)) });
-  }
-  if (await pathExists(join(project, "tests"))) {
-    results.push({ axis: "pypi", ...(await runProjectTests(project, { ...lock, runtime_profile: "python_internal" }, options)) });
-  }
-  const ran = results.filter((item) => item.status !== "not_configured");
-  if (ran.length === 0) {
-    return { status: "not_configured", reason: "실행할 테스트 명령이 없습니다. L2 이상에서는 테스트를 추가해야 합니다." };
-  }
+  const gate = testExecutionGate(lock, options);
+  if (gate) return gate;
+  const axes = [
+    { axis: "npm", ...(await runNodeTests(project, options)) },
+    { axis: "pypi", ...(await runPythonTests(project, options, { allowTestsDir: false })) }
+  ];
+  const recorded = axes.map(({ axis, status, command, code, reason }) => ({ axis, status, command: command || null, code: code ?? null, reason: reason ?? null }));
+  const ran = axes.filter((item) => item.status !== "not_configured");
+  if (ran.length === 0) return { ...TEST_NOT_CONFIGURED, axes: recorded };
   // 가장 나쁜 상태가 전체 상태다 — 한 축이 막히거나 실패하면 통과가 아니다.
   const order = ["blocked", "failed", "confirmation_required", "deferred", "skipped", "not_configured", "passed"];
   const worst = ran.slice().sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status))[0];
   return {
     status: worst.status,
     reason: worst.reason,
-    command: ran.map((item) => `${item.axis}: ${item.command || item.status}`).join(" · "),
-    axes: ran.map(({ axis, status, command, code }) => ({ axis, status, command: command || null, code: code ?? null })),
+    command: recorded.map((item) => `${item.axis}: ${item.command || item.status}`).join(" · "),
+    axes: recorded,
     stderr: worst.stderr
   };
 }
@@ -567,14 +616,19 @@ async function runChecker(project, lock, env = process.env) {
   if (declaredDependencies > 0 && dependencyUnparsed) {
     return { status: "incomplete", reason: "선언된 의존성이 있지만 체커 의존성 감사를 완료하지 못했습니다.", declaredDependencies, report };
   }
-  if (result.code !== 0) return { status: "blocked", reason: "체커가 공식 차단 종료 코드를 반환했습니다.", exit_code: result.code, scannedFiles: scannedFiles.length, stderr: result.stderr.slice(-2000) };
+  // 여기까지 왔다면 결과를 읽었고 검사 범위·프로필·의존성 감사의 완전성도 확인했다.
+  // 그러므로 종료 코드와 무관하게 **먼저 근거를 남긴다** — 차단된 경우가
+  // 근거가 가장 필요한 경우인데 예전에는 그때만 영수증이 없었다.
   const reportPath = await writeReceipt(project, "checker-evidence", buildCheckerEvidence({
     checker: checker.source === "bundled" ? "bundled_gvskb" : "system_gvskb",
     report,
     scannedFileCount: scannedFiles.length,
     declaredDependencyCount: declaredDependencies,
-    reportSha256: createHash("sha256").update(result.stdout).digest("hex")
+    reportSha256: createHash("sha256").update(result.stdout).digest("hex"),
+    exitCode: result.code
   }));
+  // 근거를 남긴 뒤에도 차단은 차단이다 — 완화하지 않는다.
+  if (result.code !== 0) return { status: "blocked", reason: "체커가 공식 차단 종료 코드를 반환했습니다.", exit_code: result.code, reportPath, scannedFiles: scannedFiles.length, findings: report.summary?.finding_count ?? null, stderr: result.stderr.slice(-2000) };
   return { status: "review_required", reportPath, scannedFiles: scannedFiles.length, findings: report.summary?.finding_count ?? null };
 }
 
