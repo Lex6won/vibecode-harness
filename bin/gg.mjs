@@ -6,6 +6,7 @@ import { basename, dirname, extname, join, resolve, relative, sep } from "node:p
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
+import { buildCheckerEvidence } from "../lib/checker-evidence.mjs";
 import { cleanupSupersededBundleFiles, installationState, verifyBundle } from "../lib/release-integrity.mjs";
 import {
   ALL_CODE_EXTENSIONS,
@@ -40,6 +41,7 @@ const CI_TEMPLATE_PATH = join(HARNESS_ROOT, "templates", "vibecode-harness-ci.ym
 const TRUST_PATH = join(HARNESS_ROOT, "shared", "trust", "approved-signers.json");
 const RELEASE_INTEGRITY_PATH = join(HARNESS_ROOT, "lib", "release-integrity.mjs");
 const POLICY_ENGINE_PATH = join(HARNESS_ROOT, "lib", "policy-engine.mjs");
+const CHECKER_EVIDENCE_PATH = join(HARNESS_ROOT, "lib", "checker-evidence.mjs");
 const BUNDLED_CHECKER_PATH = join(HARNESS_ROOT, "checker", process.platform === "win32" ? "gvskb.exe" : "gvskb");
 const BUNDLED_PYTHON_PATH = join(HARNESS_ROOT, "runtime", process.platform === "win32" ? "python.exe" : "python");
 // Kept for legacy diagnostic wording; profile-aware validation below is authoritative.
@@ -106,8 +108,9 @@ function usage() {
   node bin/gg.mjs verify --project <폴더> [--run-tests] [--hook] [--skip-checker] [--no-tests]
   node bin/gg.mjs release --project <폴더>
 
-체커는 외부 엔진으로 호출만 합니다. 현재 CLI JSON에 공식 최종 판정 필드가 없으므로
-verify는 검사 증적의 완전성을 확인하며, release는 사람 검토를 요구합니다.`);
+체커는 외부 엔진으로 호출만 합니다. 체커의 배포 판정(gate)은 영수증에 근거와 함께
+보존하지만, 이 하네스는 그것을 승인으로 바꾸지 않습니다 — verify는 검사 증적의
+완전성을 확인하고, release는 사람 검토를 요구합니다.`);
 }
 
 function projectPath(options) {
@@ -351,6 +354,12 @@ async function policyCheck(project, lock) {
   const localPolicyEngine = join(project, ".vibecode-harness", "lib", "policy-engine.mjs");
   if (!(await pathExists(localPolicyEngine))) failures.push("Project language policy engine copy is missing. Reapply the approved harness.");
   else if (lock.policy_engine_sha256 && (await sha256(localPolicyEngine)) !== lock.policy_engine_sha256) failures.push("Project language policy engine changed after initialization. Reapply the approved harness.");
+  // 구버전 lock 에는 이 필드가 없다 — 있을 때만 검사해 기존 프로젝트를 깨지 않는다.
+  if (lock.checker_evidence_sha256) {
+    const localCheckerEvidence = join(project, ".vibecode-harness", "lib", "checker-evidence.mjs");
+    if (!(await pathExists(localCheckerEvidence))) failures.push("프로젝트의 체커 증적 구성 모듈 사본이 없습니다. 승인된 하네스를 다시 적용하세요.");
+    else if ((await sha256(localCheckerEvidence)) !== lock.checker_evidence_sha256) failures.push("체커 증적 구성 모듈이 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
+  }
   const localHook = join(project, ".vibecode-harness", "bin", "claude-pre-tool.mjs");
   if (lock.tools?.includes("claude-code")) {
     if (!(await pathExists(localHook))) failures.push("Claude Code 훅 사본이 없습니다. 승인된 하네스를 다시 적용하세요.");
@@ -559,17 +568,13 @@ async function runChecker(project, lock, env = process.env) {
     return { status: "incomplete", reason: "선언된 의존성이 있지만 체커 의존성 감사를 완료하지 못했습니다.", declaredDependencies, report };
   }
   if (result.code !== 0) return { status: "blocked", reason: "체커가 공식 차단 종료 코드를 반환했습니다.", exit_code: result.code, scannedFiles: scannedFiles.length, stderr: result.stderr.slice(-2000) };
-  const reportPath = await writeReceipt(project, "checker-evidence", {
-    kind: "checker_evidence",
+  const reportPath = await writeReceipt(project, "checker-evidence", buildCheckerEvidence({
     checker: checker.source === "bundled" ? "bundled_gvskb" : "system_gvskb",
-    profile: report.profile,
-    scanned_file_count: scannedFiles.length,
-    finding_count: report.summary?.finding_count ?? null,
-    declared_dependency_count: declaredDependencies,
-    profile_fallback: Boolean(report.profile_fallback),
-    report_sha256: createHash("sha256").update(result.stdout).digest("hex"),
-    final_verdict: "review_required"
-  });
+    report,
+    scannedFileCount: scannedFiles.length,
+    declaredDependencyCount: declaredDependencies,
+    reportSha256: createHash("sha256").update(result.stdout).digest("hex")
+  }));
   return { status: "review_required", reportPath, scannedFiles: scannedFiles.length, findings: report.summary?.finding_count ?? null };
 }
 
@@ -773,6 +778,7 @@ async function initCommand(options) {
   await cp(join(HARNESS_ROOT, "bin", "antigravity-pre-tool.mjs"), join(harnessDir, "bin", "antigravity-pre-tool.mjs"));
   await cp(RELEASE_INTEGRITY_PATH, join(harnessDir, "lib", "release-integrity.mjs"));
   await cp(POLICY_ENGINE_PATH, join(harnessDir, "lib", "policy-engine.mjs"));
+  await cp(CHECKER_EVIDENCE_PATH, join(harnessDir, "lib", "checker-evidence.mjs"));
   const lock = {
     schema_version: 3,
     harness_version: "0.2.0",
@@ -790,6 +796,7 @@ async function initCommand(options) {
     runner_sha256: await sha256(join(harnessDir, "bin", "gg.mjs")),
     release_integrity_sha256: await sha256(join(harnessDir, "lib", "release-integrity.mjs")),
     policy_engine_sha256: await sha256(join(harnessDir, "lib", "policy-engine.mjs")),
+    checker_evidence_sha256: await sha256(join(harnessDir, "lib", "checker-evidence.mjs")),
     claude_hook_sha256: await sha256(join(harnessDir, "bin", "claude-pre-tool.mjs")),
     antigravity_hook_sha256: await sha256(join(harnessDir, "bin", "antigravity-pre-tool.mjs")),
     managed_adapters: {},
