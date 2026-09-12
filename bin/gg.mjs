@@ -29,6 +29,73 @@ const EXIT = Object.freeze({
   SYSTEM: 70
 });
 
+/**
+ * Claude Code 훅 등록 형식.
+ *
+ * 예전에는 `node .vibecode-harness/bin/claude-pre-tool.mjs` 라는 **상대 경로**를
+ * 셸 형식으로 등록했다. Claude 가 프로젝트 루트 밖에서 도구를 실행하면 그 파일을
+ * 찾지 못해 exit 1 로 끝나는데, Claude Code 는 exit 2 만 차단으로 보므로
+ * **정책 검사 없이 그대로 진행됐다.** 훅이 열리는 방향으로 실패하고 있었다.
+ *
+ * 그래서 두 가지를 바꾼다.
+ *
+ * 1. exec 형식(`args` 배열). 셸을 거치지 않고 Claude Code 가 `${CLAUDE_PROJECT_DIR}`
+ *    를 세션 시작 프로젝트 루트로 직접 치환한다. Windows 에서 Git Bash 인지
+ *    PowerShell 인지에 따라 변수 확장이 갈리는 문제가 아예 없어진다. `node` 는
+ *    어느 플랫폼에서나 실제 실행 파일이라 exec 형식으로 띄울 수 있다.
+ * 2. 부트스트랩. 훅 파일을 `import()` 하고 **실패하면 exit 2** 로 끝낸다. 파일이
+ *    없거나, 플레이스홀더가 치환되지 않았거나, 모듈이 깨졌으면 통과가 아니라
+ *    차단이다 — 정책을 확인하지 못한 것은 정책을 통과한 것이 아니다.
+ *
+ * 부트스트랩은 settings.json 에 인라인으로 들어간다. 훅 파일이 없는 상황을 막는
+ * 코드가 훅 파일 안에 있을 수는 없기 때문이다.
+ */
+const CLAUDE_HOOK_SCRIPT_PLACEHOLDER = "${CLAUDE_PROJECT_DIR}/.vibecode-harness/bin/claude-pre-tool.mjs";
+const CLAUDE_HOOK_BOOTSTRAP = 'import("node:url").then((u) => import(u.pathToFileURL(process.argv[1]).href)).catch((e) => { process.stderr.write("바이브코드 하네스 차단: 정책 훅을 실행할 수 없습니다: " + process.argv[1] + " (" + ((e && e.code) || e) + ")\\n"); process.exit(2); });';
+const CLAUDE_HOOK_MATCHER = "Write|Edit|MultiEdit|Bash";
+
+function claudeHookEntry() {
+  return { type: "command", command: "node", args: ["-e", CLAUDE_HOOK_BOOTSTRAP, "--", CLAUDE_HOOK_SCRIPT_PLACEHOLDER] };
+}
+
+/** 이 하네스가 등록한 훅인가 — 옛 상대 경로 형식이든 현재 exec 형식이든. */
+function isVibecodeClaudeHook(hook) {
+  if (!hook || typeof hook !== "object") return false;
+  const marker = ".vibecode-harness/bin/claude-pre-tool.mjs";
+  if (typeof hook.command === "string" && hook.command.includes(marker)) return true;
+  return Array.isArray(hook.args) && hook.args.some((argument) => String(argument).includes(marker));
+}
+
+function isCurrentClaudeHook(hook) {
+  return JSON.stringify(hook) === JSON.stringify(claudeHookEntry());
+}
+
+/**
+ * settings 안의 하네스 훅을 현재 형식으로 맞춘다. 다른 훅은 건드리지 않는다.
+ * 반환 status: added | migrated | already_configured
+ */
+function ensureClaudeHook(settings) {
+  settings.hooks = settings.hooks || {};
+  settings.hooks.PreToolUse = Array.isArray(settings.hooks.PreToolUse) ? settings.hooks.PreToolUse : [];
+  let found = 0;
+  let replaced = 0;
+  for (const entry of settings.hooks.PreToolUse) {
+    if (!Array.isArray(entry.hooks)) continue;
+    entry.hooks = entry.hooks.map((hook) => {
+      if (!isVibecodeClaudeHook(hook)) return hook;
+      found += 1;
+      if (isCurrentClaudeHook(hook)) return hook;
+      replaced += 1;
+      return claudeHookEntry();
+    });
+  }
+  if (found === 0) {
+    settings.hooks.PreToolUse.push({ matcher: CLAUDE_HOOK_MATCHER, hooks: [claudeHookEntry()] });
+    return { status: "added", replaced: 0 };
+  }
+  return { status: replaced ? "migrated" : "already_configured", replaced };
+}
+
 /** init 과 migrate 가 받아들이는 트랙. 한 곳에서만 정한다 — 두 벌이 되면 갈라진다. */
 const MIGRATABLE_RUNTIMES = Object.freeze(["gg_standard", "python_internal", "node_web", "typescript_web", "typescript_postgres"]);
 
@@ -892,21 +959,17 @@ async function initCommand(options) {
     await writeFile(join(project, ".claude", "vibecode-harness.md"), "Use CLAUDE.md and run gg verify before completion.\n", "utf8");
     const claudeSettingsPath = join(project, ".claude", "settings.json");
     lock.managed_adapters.claude_companion = true;
-    const hookEntry = { type: "command", command: "node .vibecode-harness/bin/claude-pre-tool.mjs" };
     if (!(await pathExists(claudeSettingsPath))) {
-      await writeJson(claudeSettingsPath, { hooks: { PreToolUse: [{ matcher: "Write|Edit|MultiEdit|Bash", hooks: [hookEntry] }] } });
+      await writeJson(claudeSettingsPath, { hooks: { PreToolUse: [{ matcher: CLAUDE_HOOK_MATCHER, hooks: [claudeHookEntry()] }] } });
       claudeSettingsStatus = "created";
     } else {
       try {
         const settings = await readJson(claudeSettingsPath);
         const backup = join(harnessDir, "backups", `claude-settings-${Date.now()}.json`);
         await cp(claudeSettingsPath, backup);
-        settings.hooks = settings.hooks || {};
-        settings.hooks.PreToolUse = Array.isArray(settings.hooks.PreToolUse) ? settings.hooks.PreToolUse : [];
-        const exists = settings.hooks.PreToolUse.some((entry) => Array.isArray(entry.hooks) && entry.hooks.some((hook) => hook.command === hookEntry.command));
-        if (!exists) settings.hooks.PreToolUse.push({ matcher: "Write|Edit|MultiEdit|Bash", hooks: [hookEntry] });
+        const result = ensureClaudeHook(settings);
         await writeJson(claudeSettingsPath, settings);
-        claudeSettingsStatus = exists ? "already_configured" : "merged_with_backup";
+        claudeSettingsStatus = result.status === "already_configured" ? "already_configured" : "merged_with_backup";
       } catch {
         claudeSettingsStatus = "manual_required_invalid_settings";
       }
@@ -1080,20 +1143,46 @@ async function updateCommand(options) {
   const after = await harnessFileDigests(harnessDir);
   const changed = Object.keys(after).filter((key) => before[key] !== after[key]);
 
+  // 사본만 새로 깔고 등록 형식을 그대로 두면, 옛 상대 경로 훅은 여전히 프로젝트
+  // 밖에서 정책 검사 없이 통과한다. 파일을 고친 것이 등록에 닿아야 한다.
+  let claudeHook = "not_selected";
+  if ((lock.tools || []).includes(TOOL_NAMES.claude)) {
+    const settingsPath = join(project, ".claude", "settings.json");
+    if (!(await pathExists(settingsPath))) {
+      await mkdir(join(project, ".claude"), { recursive: true });
+      await writeJson(settingsPath, { hooks: { PreToolUse: [{ matcher: CLAUDE_HOOK_MATCHER, hooks: [claudeHookEntry()] }] } });
+      claudeHook = "added";
+    } else {
+      try {
+        const settings = await readJson(settingsPath);
+        const result = ensureClaudeHook(settings);
+        if (result.status !== "already_configured") {
+          await cp(settingsPath, join(harnessDir, "backups", `claude-settings-before-update-${stamp}.json`));
+          await writeJson(settingsPath, settings);
+        }
+        claudeHook = result.status;
+      } catch {
+        claudeHook = "manual_required_invalid_settings";
+      }
+    }
+  }
+
+  const somethingChanged = changed.length > 0 || ["added", "migrated"].includes(claudeHook);
   const updated = { ...lock, ...after, updated_at: new Date().toISOString() };
   await writeJson(lockRecord.path, updated);
   const receipt = await writeReceipt(project, "update", {
-    kind: "update", status: changed.length ? "updated" : "unchanged",
+    kind: "update", status: somethingChanged ? "updated" : "unchanged",
     runtime_profile: lock.runtime_profile, policy_profile: lock.policy_profile,
-    changed_files: changed
+    changed_files: changed, claude_hook: claudeHook
   });
   print({
-    status: changed.length ? "updated" : "unchanged",
+    status: somethingChanged ? "updated" : "unchanged",
     runtime_profile: lock.runtime_profile,
     policy_profile: lock.policy_profile,
     changed_files: changed,
+    claude_hook: claudeHook,
     receipt,
-    next: changed.length ? "gg verify로 새 사본에서 검증하세요." : "이미 현재 번들과 같습니다."
+    next: somethingChanged ? "gg verify로 새 사본에서 검증하세요." : "이미 현재 번들과 같습니다."
   });
 }
 
@@ -1128,7 +1217,6 @@ async function configureCommand(options) {
     await mkdir(join(project, ".claude"), { recursive: true });
     await writeFile(join(project, ".claude", "vibecode-harness.md"), "Use CLAUDE.md and run gg verify before completion.\n", "utf8");
     const settingsPath = join(project, ".claude", "settings.json");
-    const hookEntry = { type: "command", command: "node .vibecode-harness/bin/claude-pre-tool.mjs" };
     let settings = { hooks: { PreToolUse: [] } };
     if (await pathExists(settingsPath)) {
       try {
@@ -1137,10 +1225,7 @@ async function configureCommand(options) {
         settings = await readJson(settingsPath);
       } catch { throw new Error("Existing Claude Code settings.json is invalid. Fix it before configuring the harness."); }
     }
-    settings.hooks = settings.hooks || {};
-    settings.hooks.PreToolUse = Array.isArray(settings.hooks.PreToolUse) ? settings.hooks.PreToolUse : [];
-    const exists = settings.hooks.PreToolUse.some((entry) => Array.isArray(entry.hooks) && entry.hooks.some((hook) => hook.command === hookEntry.command));
-    if (!exists) settings.hooks.PreToolUse.push({ matcher: "Write|Edit|MultiEdit|Bash", hooks: [hookEntry] });
+    ensureClaudeHook(settings);
     await writeJson(settingsPath, settings);
     lock.managed_adapters.claude_companion = true;
     changes.added.push("claude-code");
@@ -1188,7 +1273,7 @@ async function configureCommand(options) {
         await cp(settingsPath, join(harnessDir, "backups", `claude-settings-before-remove-${Date.now()}.json`));
         const entries = Array.isArray(settings.hooks?.PreToolUse) ? settings.hooks.PreToolUse : [];
         settings.hooks = settings.hooks || {};
-        settings.hooks.PreToolUse = entries.map((entry) => ({ ...entry, hooks: Array.isArray(entry.hooks) ? entry.hooks.filter((hook) => hook.command !== "node .vibecode-harness/bin/claude-pre-tool.mjs") : [] })).filter((entry) => entry.hooks.length);
+        settings.hooks.PreToolUse = entries.map((entry) => ({ ...entry, hooks: Array.isArray(entry.hooks) ? entry.hooks.filter((hook) => !isVibecodeClaudeHook(hook)) : [] })).filter((entry) => entry.hooks.length);
         await writeJson(settingsPath, settings);
       } catch { changes.preserved.push("claude-settings-invalid"); }
     }
@@ -1239,12 +1324,17 @@ async function doctorCommand(options) {
   if (lock?.value.tools.includes("claude-code")) {
     const claude = join(project, "CLAUDE.md");
     const settings = join(project, ".claude", "settings.json");
-    let hookApplied = false;
+    // 옛 상대 경로 형식은 '적용됨'이 아니다 — 프로젝트 밖에서는 정책 검사 없이
+    // 통과하는 형식이므로, gg update 로 바꿔야 한다는 것을 따로 말해 준다.
+    let hookState = "missing";
     try {
       const parsed = await readJson(settings);
-      hookApplied = JSON.stringify(parsed.hooks?.PreToolUse || []).includes(".vibecode-harness/bin/claude-pre-tool.mjs");
+      const hooks = (parsed.hooks?.PreToolUse || []).flatMap((entry) => Array.isArray(entry?.hooks) ? entry.hooks : []);
+      if (hooks.some(isCurrentClaudeHook)) hookState = "current";
+      else if (hooks.some(isVibecodeClaudeHook)) hookState = "legacy";
     } catch { /* reported below */ }
-    adapters.claude_code = (await pathExists(claude)) && hookApplied ? "applied" : "repair_required";
+    if (!(await pathExists(claude)) || hookState === "missing") adapters.claude_code = "repair_required";
+    else adapters.claude_code = hookState === "legacy" ? "update_required" : "applied";
   }
   if (lock?.value.tools.includes("google-antigravity")) {
     const plugin = join(project, ".agents", "plugins", "vibecode-harness");
