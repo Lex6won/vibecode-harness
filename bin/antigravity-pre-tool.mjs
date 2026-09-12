@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { isDirectPackageInstall, languageFailureForPath, runtimeFailureForCommand } from "../lib/policy-engine.mjs";
+import { isDirectPackageInstall, languageFailureForPath, resolvePolicyProfile, runtimeFailureForCommand } from "../lib/policy-engine.mjs";
 
 function respond(decision, reason) {
   process.stdout.write(`${JSON.stringify({ decision, reason })}\n`);
@@ -15,19 +13,6 @@ function pathFrom(input) {
   return String(input.file_path || input.filePath || input.path || input.file || input.target_path || input.targetPath || "");
 }
 
-function policyProfileFromProject() {
-  let directory = resolve(process.cwd());
-  while (true) {
-    const lock = resolve(directory, ".vibecode-harness", "harness.lock.json");
-    if (existsSync(lock)) {
-      try { return JSON.parse(readFileSync(lock, "utf8")).policy_profile || "general"; } catch { return "general"; }
-    }
-    const parent = dirname(directory);
-    if (parent === directory) return "general";
-    directory = parent;
-  }
-}
-
 let raw = "";
 for await (const chunk of process.stdin) raw += chunk;
 
@@ -35,7 +20,7 @@ try {
   const event = JSON.parse(raw || "{}");
   const input = event.toolCall?.args || event.tool_input || event.toolInput || {};
   const filePath = pathFrom(input);
-  const profile = policyProfileFromProject();
+  const profile = resolvePolicyProfile({ filePath, cwd: event.cwd });
   const languageFailure = languageFailureForPath(profile, filePath);
   if (languageFailure) {
     respond("deny", languageFailure);
