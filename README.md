@@ -1,6 +1,6 @@
 # 바이브코드 하네스
 
-> 공무원이 Codex, Claude Code, Google Antigravity로 업무 도구를 만들 때, 기획·화면 설계·구현·테스트·보안 점검을 같은 순서로 진행하도록 돕는 실행형 개발 하네스입니다.
+> 공무원이 Codex, Claude Code와 데스크톱·GitHub 연동 도구로 업무 도구를 만들 때, 기획·화면 설계·구현·테스트·보안 점검을 같은 순서로 진행하도록 돕는 실행형 개발 하네스입니다.
 
 바이브코드 하네스의 목표는 “앱을 빨리 만드는 것”에서 끝나지 않습니다. AI로 만든 결과물이 나중에 검증되고, 보완되고, 운영으로 갈 수 있도록 처음부터 공통 개발 약속과 증적을 남기게 합니다.
 
@@ -96,7 +96,7 @@ https://github.com/Lex6won/vibecode-harness 저장소를 받아서 README에 따
 
 ### 2. 프로젝트에 적용하기
 
-PowerShell에서 아래처럼 하네스 명령 위치를 변수로 지정합니다. 예시는 TypeScript 기반 내부 업무 도구에 Codex, Claude Code, Google Antigravity를 함께 적용하는 경우입니다.
+PowerShell에서 아래처럼 하네스 명령 위치를 변수로 지정합니다. 예시는 TypeScript 기반 내부 업무 도구에 Codex와 Claude Code를 함께 적용하는 경우입니다.
 
 ```powershell
 $gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
@@ -105,11 +105,11 @@ $gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
 & $gg doctor --project C:\work\my-service
 ```
 
-`init`은 프로젝트 안에 정책과 실행기를 복사하고, 선택한 AI 도구의 지침과 훅을 적용합니다. 이미 있는 `AGENTS.md`, `CLAUDE.md`, Claude 설정, Antigravity 플러그인, Git Hook은 덮어쓰지 않습니다. 터미널에서 질문에 답하며 시작하려면 `& $gg init --interactive`를 실행합니다.
+`init`은 프로젝트 안에 정책과 실행기를 복사하고, 선택한 AI 도구의 지침과 훅을 적용합니다. 이미 있는 `AGENTS.md`, `CLAUDE.md`, Claude 설정, Git Hook은 덮어쓰지 않습니다. 터미널에서 질문에 답하며 시작하려면 `& $gg init --interactive`를 실행합니다.
 
 | 항목 | 선택 값 | 언제 선택하나요 |
 |---|---|---|
-| AI 도구 | `codex`, `claude`, `antigravity`, `claude-desktop`, `chatgpt-desktop`, `lovable`, `both`, `all` | 하나만 또는 여러 도구를 같은 프로젝트에 적용할 때. `both`는 Codex+Claude Code, `all`은 지원하는 여섯 도구 전체입니다. `all`과 Lovable은 TypeScript/PostgreSQL 엄격형을 사용하며 Supabase는 선택 가능한 PostgreSQL 연동입니다. |
+| AI 도구 | `codex`, `claude`, `claude-desktop`, `chatgpt-desktop`, `lovable`, `both`, `all` | 하나만 또는 여러 도구를 같은 프로젝트에 적용할 때. `both`는 Codex+Claude Code, `all`은 지원하는 다섯 도구 전체입니다. 기본값은 Python·JavaScript·TypeScript를 동등하게 허용하는 `gg_standard`이며, Lovable은 이 안에서 TypeScript 작업을 만듭니다. |
 | 개발 방식 | `python_internal` | 내부 업무 처리·데이터 처리 중심 도구 |
 |  | `node_web` | JavaScript 기반 웹 도구 |
 |  | `typescript_web` | TypeScript 기반 웹 도구, 일반적인 웹 업무 도구에 권장 |
@@ -147,7 +147,6 @@ $gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
 | `.codex/vibecode-harness.md` | Codex에 하네스 사용을 명시하는 보조 지침 |
 | `CLAUDE.md` | Claude Code가 읽는 프로젝트 작업 지침 |
 | `.claude/settings.json` | Claude Code 작업 전 Hook 설정 |
-| `.agents/plugins/vibecode-harness/` | Google Antigravity의 프로젝트 규칙, 스킬, 작업 전 Hook |
 | `.vibecode-harness/` | 프로젝트에 고정된 하네스 실행기, 정책, lock 파일 |
 | `.githooks/pre-commit` | 가능한 경우 커밋 전 `gg verify --hook` 실행 |
 | `evidence/` | 기획, 설계, 검증, 체커 증적 저장 |
@@ -158,7 +157,6 @@ $gg = "$env:LOCALAPPDATA\Gyeonggi\VibeCodeHarness\github-pilot\gg.cmd"
 |---|---|
 | Codex | 프로젝트의 `AGENTS.md`와 `.codex/vibecode-harness.md`를 적용합니다. |
 | Claude Code | 프로젝트의 `CLAUDE.md`와 작업 전 Hook을 적용합니다. 승인되지 않은 언어 파일 생성, 직접 패키지 설치 등은 Hook이 막습니다. |
-| Google Antigravity | 프로젝트의 `.agents/plugins/vibecode-harness/`에 규칙, 스킬, 작업 전 Hook을 적용합니다. 지원하지 않는 언어와 직접 패키지 설치 명령은 Hook이 차단합니다. |
 | Claude Desktop | 프로젝트 정책 안내를 적용하고 Git 게이트에서 언어·런타임을 강제합니다. 일반 파일 작업을 가로채는 훅을 보장하지 않습니다. |
 | ChatGPT/Codex Desktop | 로컬 체크아웃의 `AGENTS.md`와 프로젝트 정책, Git 게이트를 사용합니다. 로그인 정보·토큰은 읽지 않습니다. |
 | Lovable + GitHub | JavaScript·TypeScript·PostgreSQL 공통 프로필과 전용 동기화 브랜치·GitHub PR 게이트를 적용합니다. Supabase는 PostgreSQL 기반의 선택 가능한 연동이며, Lovable 내부 지침은 안내이고 PR 게이트가 강제 지점입니다. |

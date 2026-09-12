@@ -1,15 +1,16 @@
 # VibeCode Harness — Lovable GitHub bridge
 
-This repository uses the `typescript_postgres` profile unless the project lock
-records another approved profile.
+This repository uses either the institution-standard `gg_standard` profile or
+the narrower `typescript_postgres` profile recorded in the project lock.
 
 ## Required build boundary
 
-- Application code: TypeScript (`.ts`, `.tsx`) only.
+- Code created by Lovable: TypeScript (`.ts`, `.tsx`) only.
 - PostgreSQL migrations: SQL only. Supabase migrations are supported when that integration is selected.
 - Supabase Edge Functions, when used: TypeScript only.
-- Do not add Python, JavaScript implementation files, another backend runtime,
-  or an unreviewed package.
+- Do not add another backend runtime or an unreviewed package. In a
+  `gg_standard` project, Python services are permitted only when their
+  repository-level policy and PyPI dependency gate approve them.
 
 ## Lovable workflow
 

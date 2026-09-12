@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "bundle_id": "gg-stable-YYYYMMDD-N",
-  "harness_version": "0.1.0",
+  "harness_version": "0.2.0",
   "policy_sha256": "<approved-policy-sha256>",
   "signer_key_id": "<institution-key-id>",
   "allowed_languages": ["python", "javascript", "typescript"],
-  "runtime_profile": "python_internal | node_web | typescript_web",
+  "runtime_profile": "gg_standard | python_internal | node_web | typescript_web | typescript_postgres",
   "adapter_versions": {
     "codex": "0.1.0",
     "claude_code": "0.1.0"

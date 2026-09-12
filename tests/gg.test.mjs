@@ -110,16 +110,33 @@ test("init applies every supported tool adapter when all is selected", async () 
     const init = await runGg(project, ["init", "--tools", "all", "--level", "L1"]);
     assert.equal(init.code, 0, init.stdout + init.stderr);
     const lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
-    assert.equal(lock.runtime_profile, "typescript_postgres");
-    assert.deepEqual(lock.tools, ["codex", "claude-code", "google-antigravity", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
-    assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "plugin.json"), "utf8"), /vibecode-harness/);
-    assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "hooks.json"), "utf8"), /antigravity-pre-tool/);
-    assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "skills", "vibecode-workflow", "SKILL.md"), "utf8"), /gg verify/);
+    assert.equal(lock.runtime_profile, "gg_standard");
+    assert.deepEqual(lock.tools, ["codex", "claude-code", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
+    assert.deepEqual(lock.allowed_languages, ["python", "javascript", "typescript"]);
+    await writeFile(join(project, "worker.py"), "def ready():\n    return True\n");
+    const PythonAllowed = await runGg(project, ["build"]);
+    assert.equal(PythonAllowed.code, 0, PythonAllowed.stdout + PythonAllowed.stderr);
+    await writeFile(join(project, "unsafe.go"), "package main\n");
+    const GoBlocked = await runGg(project, ["build"]);
+    assert.equal(GoBlocked.code, 10, GoBlocked.stdout + GoBlocked.stderr);
+    assert.match(GoBlocked.stdout, /unsafe\.go/);
+    await assert.rejects(stat(join(project, ".agents", "plugins", "vibecode-harness", "plugin.json")));
     assert.match(await readFile(join(project, "VIBECODE-LOVABLE.md"), "utf8"), /TypeScript/);
     assert.ok(await stat(join(project, ".github", "workflows", "vibecode-harness.yml")));
     const doctor = await runGg(project, ["doctor"]);
     assert.notEqual(doctor.code, 70, doctor.stdout + doctor.stderr);
-    assert.match(doctor.stdout, /"google_antigravity": "applied"/);
+    assert.doesNotMatch(doctor.stdout, /antigravity/i);
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
+
+test("retired Antigravity cannot be selected for a new project", async () => {
+  const project = await mkdtemp(join(tmpdir(), "vibecode-harness-retired-tool-"));
+  try {
+    const result = await runGg(project, ["init", "--tools", "antigravity", "--runtime", "gg_standard", "--level", "L1"]);
+    assert.equal(result.code, 70, result.stdout + result.stderr);
+    assert.match(result.stderr, /--tools/);
   } finally {
     await rm(project, { recursive: true, force: true });
   }
@@ -133,44 +150,85 @@ test("configure adds and safely removes selected tool adapters", async () => {
     const added = await runGg(project, ["configure", "--tools", "all"]);
     assert.equal(added.code, 0, added.stdout + added.stderr);
     let lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
-    assert.deepEqual(lock.tools, ["codex", "claude-code", "google-antigravity", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
+    assert.deepEqual(lock.tools, ["codex", "claude-code", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
     assert.match(await readFile(join(project, ".claude", "settings.json"), "utf8"), /claude-pre-tool/);
-    assert.match(await readFile(join(project, ".agents", "plugins", "vibecode-harness", "hooks.json"), "utf8"), /antigravity-pre-tool/);
 
-    const removed = await runGg(project, ["configure", "--remove", "claude,antigravity,claude-desktop,chatgpt-desktop,lovable"]);
+    const removed = await runGg(project, ["configure", "--remove", "claude,claude-desktop,chatgpt-desktop,lovable"]);
     assert.equal(removed.code, 0, removed.stdout + removed.stderr);
     lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
     assert.deepEqual(lock.tools, ["codex"]);
     assert.doesNotMatch(await readFile(join(project, ".claude", "settings.json"), "utf8"), /claude-pre-tool/);
-    await assert.rejects(readFile(join(project, ".agents", "plugins", "vibecode-harness", "hooks.json"), "utf8"));
     assert.match(await readFile(join(project, "CLAUDE.md"), "utf8"), /vibecode-harness/);
   } finally {
     await rm(project, { recursive: true, force: true });
   }
 });
 
-test("init preserves an existing Antigravity plugin for manual review", async () => {
-  const project = await mkdtemp(join(tmpdir(), "vibecode-harness-antigravity-existing-"));
+test("update retires a managed legacy Antigravity adapter", async () => {
+  const project = await mkdtemp(join(tmpdir(), "vibecode-harness-retired-antigravity-"));
   const plugin = join(project, ".agents", "plugins", "vibecode-harness");
   try {
+    const init = await runGg(project, ["init", "--tools", "codex", "--runtime", "typescript_web", "--level", "L1"]);
+    assert.equal(init.code, 0, init.stdout + init.stderr);
     await mkdir(plugin, { recursive: true });
     await writeFile(join(plugin, "plugin.json"), "{\"name\":\"existing-plugin\"}\n");
-    const init = await runGg(project, ["init", "--tools", "antigravity", "--runtime", "typescript_web", "--level", "L1"]);
-    assert.equal(init.code, 0, init.stdout + init.stderr);
-    assert.match(init.stdout, /existing_plugin_preserved/);
-    assert.match(await readFile(join(plugin, "plugin.json"), "utf8"), /existing-plugin/);
-    const doctor = await runGg(project, ["doctor"]);
-    assert.match(doctor.stdout, /"google_antigravity": "repair_required"/);
+    const lockPath = join(project, ".vibecode-harness", "harness.lock.json");
+    const lock = JSON.parse(await readFile(lockPath, "utf8"));
+    lock.tools.push("google-antigravity");
+    lock.antigravity_hook_sha256 = "legacy";
+    lock.managed_adapters.antigravity_plugin = true;
+    await writeFile(lockPath, JSON.stringify(lock, null, 2));
+    await writeFile(join(project, ".vibecode-harness", "bin", "antigravity-pre-tool.mjs"), "legacy handler\n");
+    await mkdir(join(project, ".vibecode-harness", "adapters", "antigravity"), { recursive: true });
+
+    const update = await runGg(project, ["update"]);
+    assert.equal(update.code, 0, update.stdout + update.stderr);
+    const updated = JSON.parse(await readFile(lockPath, "utf8"));
+    assert.equal(updated.tools.includes("google-antigravity"), false);
+    assert.equal(updated.antigravity_hook_sha256, undefined);
+    await assert.rejects(stat(plugin));
+    await assert.rejects(stat(join(project, ".vibecode-harness", "bin", "antigravity-pre-tool.mjs")));
+    assert.match(update.stdout, /retired_adapters/);
   } finally {
     await rm(project, { recursive: true, force: true });
   }
 });
 
-test("init creates an opt-in CI gate without overwriting project workflows", async () => {
+test("an unowned retired Antigravity plugin blocks verification until manual cleanup", async () => {
+  const project = await mkdtemp(join(tmpdir(), "vibecode-harness-retired-plugin-review-"));
+  const plugin = join(project, ".agents", "plugins", "vibecode-harness");
+  try {
+    const init = await runGg(project, ["init", "--tools", "codex", "--runtime", "gg_standard", "--level", "L1"]);
+    assert.equal(init.code, 0, init.stdout + init.stderr);
+    await mkdir(plugin, { recursive: true });
+    const lockPath = join(project, ".vibecode-harness", "harness.lock.json");
+    const lock = JSON.parse(await readFile(lockPath, "utf8"));
+    lock.tools.push("google-antigravity");
+    await writeFile(lockPath, JSON.stringify(lock, null, 2));
+
+    const update = await runGg(project, ["update"]);
+    assert.equal(update.code, 0, update.stdout + update.stderr);
+    const updated = JSON.parse(await readFile(lockPath, "utf8"));
+    assert.deepEqual(updated.retired_adapters_pending_cleanup, ["google-antigravity"]);
+    const blocked = await runGg(project, ["build"]);
+    assert.equal(blocked.code, 10, blocked.stdout + blocked.stderr);
+    assert.match(blocked.stdout, /Retired Google Antigravity plugin remains/);
+
+    await rm(plugin, { recursive: true, force: true });
+    const cleared = await runGg(project, ["update"]);
+    assert.equal(cleared.code, 0, cleared.stdout + cleared.stderr);
+    const clean = await runGg(project, ["build"]);
+    assert.equal(clean.code, 0, clean.stdout + clean.stderr);
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
+
+test("desktop integrations create a CI gate without overwriting project workflows", async () => {
   await withProject(
     async () => {
       const project = await mkdtemp(join(tmpdir(), "vibecode-harness-ci-"));
-      const init = await runGg(project, ["init", "--tools", "codex", "--runtime", "typescript_web", "--level", "L1", "--ci"]);
+      const init = await runGg(project, ["init", "--tools", "codex,claude-desktop", "--runtime", "gg_standard", "--level", "L1"]);
       assert.equal(init.code, 0, init.stdout + init.stderr);
       return project;
     },
@@ -178,7 +236,12 @@ test("init creates an opt-in CI gate without overwriting project workflows", asy
       const workflow = await readFile(join(project, ".github", "workflows", "vibecode-harness.yml"), "utf8");
       assert.match(workflow, /ubuntu-latest/);
       assert.match(workflow, /actions\/setup-node@v4/);
+      assert.match(workflow, /actions\/setup-python@v5/);
       assert.match(workflow, /gg\.mjs verify/);
+      await rm(join(project, ".github", "workflows", "vibecode-harness.yml"));
+      const missingGate = await runGg(project, ["build"]);
+      assert.equal(missingGate.code, 10, missingGate.stdout + missingGate.stderr);
+      assert.match(missingGate.stdout, /pull-request policy workflow/);
     }
   );
 });

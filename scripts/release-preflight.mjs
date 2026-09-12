@@ -42,9 +42,8 @@ async function main() {
   if (!installerSpec.includes(`#define AppVersion "${version}"`)) errors.push("Inno Setup AppVersion must match package.json version.");
   if (!(await exists(join(root, "gg.cmd")))) errors.push("gg.cmd is required for the signed Windows bundle.");
   if (!(await exists(join(root, "manager.ps1")))) errors.push("manager.ps1 is required for the signed Windows bundle.");
-  if (!(await exists(join(root, "adapters", "antigravity", "plugin.json")))) errors.push("Google Antigravity adapter is missing.");
   const supported = releaseIndex.capabilities?.supported_tools || [];
-  for (const tool of ["codex", "claude-code", "google-antigravity", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]) {
+  for (const tool of ["codex", "claude-code", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]) {
     if (!supported.includes(tool)) errors.push(`portal capabilities is missing ${tool}.`);
   }
   if (!new Set(["production", "demonstration"]).has(channel)) errors.push(`unsupported release channel: ${channel}.`);

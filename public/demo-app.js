@@ -17,7 +17,6 @@ const elements = {
 const TOOL_LABELS = {
   codex: "Codex",
   "claude-code": "Claude Code",
-  "google-antigravity": "Google Antigravity",
   "claude-desktop": "Claude Desktop (Git gate)",
   "chatgpt-codex-desktop": "ChatGPT/Codex Desktop (Git gate)",
   "lovable-github": "Lovable + GitHub PR gate"

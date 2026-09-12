@@ -16,7 +16,6 @@
     "supported_tools": [
       "codex",
       "claude-code",
-      "google-antigravity",
       "claude-desktop",
       "chatgpt-codex-desktop",
       "lovable-github"

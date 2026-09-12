@@ -26,8 +26,8 @@ test("GitHub pilot installer has explicit source acknowledgement and no bypass e
   assert.match(source, /InstallPrerequisites/);
   assert.match(source, /OpenJS\.NodeJS\.LTS/);
   assert.match(source, /Python\.Python\.3\.13/);
-  assert.match(source, /antigravity-pre-tool\.mjs/);
-  assert.match(source, /adapters\\antigravity\\plugin\.json/);
+  assert.doesNotMatch(source, /antigravity-pre-tool\.mjs/);
+  assert.doesNotMatch(source, /adapters\\antigravity\\plugin\.json/);
   assert.match(source, /vibecode-checker\/archive\/refs\/heads\/main\.zip/);
   assert.match(source, /staging-\$PID/);
   assert.doesNotMatch(source, /ExecutionPolicy\s+Bypass/i);

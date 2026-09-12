@@ -83,13 +83,13 @@ test("desktop guidance and Lovable GitHub bridge are applied with explicit enfor
   try {
     const init = await runGg(project, [
       "init", "--tools", "codex,claude-desktop,chatgpt-desktop,lovable",
-      "--runtime", "typescript_postgres", "--level", "L1"
+      "--runtime", "gg_standard", "--level", "L1"
     ]);
     assert.equal(init.code, 0, init.stdout + init.stderr);
     const lock = JSON.parse(await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8"));
     assert.deepEqual(lock.tools, ["codex", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
     assert.match(await readFile(join(project, ".vibecode-harness", "tool-guides", "claude-desktop.md"), "utf8"), /Git gate/);
-    assert.match(await readFile(join(project, "VIBECODE-LOVABLE.md"), "utf8"), /TypeScript/);
+    assert.match(await readFile(join(project, "VIBECODE-LOVABLE.md"), "utf8"), /gg_standard/);
     const workflow = await readFile(join(project, ".github", "workflows", "vibecode-harness.yml"), "utf8");
     assert.match(workflow, /ubuntu-latest/);
     assert.match(workflow, /actions\/setup-node@v4/);
@@ -102,12 +102,17 @@ test("desktop guidance and Lovable GitHub bridge are applied with explicit enfor
   }
 });
 
-test("Lovable GitHub support refuses a non-TypeScript-PostgreSQL policy profile", async () => {
+test("Lovable GitHub support accepts the institution standard and refuses narrow web-only profiles", async () => {
   const project = await mkdtemp(join(tmpdir(), "vibecode-harness-lovable-profile-"));
   try {
-    const result = await runGg(project, ["init", "--tools", "lovable", "--runtime", "typescript_web", "--level", "L1"]);
+    const standard = await runGg(project, ["init", "--tools", "lovable", "--runtime", "gg_standard", "--level", "L1"]);
+    assert.equal(standard.code, 0, standard.stdout + standard.stderr);
+    await rm(project, { recursive: true, force: true });
+    const secondProject = await mkdtemp(join(tmpdir(), "vibecode-harness-lovable-narrow-"));
+    const result = await runGg(secondProject, ["init", "--tools", "lovable", "--runtime", "typescript_web", "--level", "L1"]);
     assert.equal(result.code, 70, result.stdout + result.stderr);
-    assert.match(result.stderr, /typescript_postgres/);
+    assert.match(result.stderr, /gg_standard or typescript_postgres/);
+    await rm(secondProject, { recursive: true, force: true });
   } finally {
     await rm(project, { recursive: true, force: true });
   }

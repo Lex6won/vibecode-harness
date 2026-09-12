@@ -170,5 +170,3 @@ try {
 } catch {
   Stop-Install $_.Exception.Message
 }
-
-# GitHub pilot contents include adapters\antigravity\plugin.json and antigravity-pre-tool.mjs.

@@ -11,14 +11,14 @@ test("pilot portal labels a PEM-verified unsigned demonstration installer separa
   assert.equal(index.status, "demo_installer_published");
   assert.equal(index.installer.signature_status, "pem_bundle_verified_unsigned_demo");
   assert.match(index.installer.download_url, /\/v0\.2\.0-demo\.\d+\//);
-  assert.deepEqual(index.capabilities.supported_tools, ["codex", "claude-code", "google-antigravity", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
+  assert.deepEqual(index.capabilities.supported_tools, ["codex", "claude-code", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
   assert.match(index.capabilities.update_policy, /does not update automatically/);
   assert.match(app, /installer_published/);
   assert.match(app, /demo_installer_published/);
   assert.match(app, /authenticode_verified/);
   assert.match(app, /pem_bundle_verified_unsigned_demo/);
   assert.match(app, /setDownloadUnavailable/);
-  assert.match(app, /google-antigravity/);
+  assert.doesNotMatch(app, /google-antigravity/);
   assert.match(app, /lovable-github/);
 });
 
