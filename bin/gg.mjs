@@ -101,6 +101,7 @@ function usage() {
   node bin/gg.mjs init --project <폴더> [--tools codex|claude|antigravity|claude-desktop|chatgpt-desktop|lovable|both|all|codex,claude] [--runtime gg_standard|python_internal|node_web|typescript_web|typescript_postgres] [--level L1|L2|L3] [--ci]
   node bin/gg.mjs init --interactive
   node bin/gg.mjs configure --project <folder> [--tools codex,claude,antigravity] [--remove codex,claude,antigravity]
+  node bin/gg.mjs update --project <폴더>
   node bin/gg.mjs migrate --project <폴더> --runtime gg_standard|python_internal|node_web|typescript_web|typescript_postgres [--level L1|L2|L3] [--force]
   node bin/gg.mjs doctor [--project <폴더>]
   node bin/gg.mjs start --project <폴더> --brief <업무 설명>
@@ -1056,6 +1057,46 @@ async function migrateCommand(options) {
   });
 }
 
+/**
+ * 프로젝트의 하네스 사본을 현재 승인 번들로 다시 깐다. 트랙은 건드리지 않는다.
+ *
+ * 왜 필요한가: 하네스를 고쳐도 **이미 초기화된 프로젝트에는 닿을 방법이 없었다.**
+ * init 은 기존 lock 을 거부하고, configure 는 도구만 다루고, migrate 는 트랙이
+ * 같으면 아무것도 하지 않는다. 그래서 훅의 결함을 고쳐도 그 훅을 실제로 쓰는
+ * 프로젝트는 옛 파일을 계속 쓰게 된다 — 고친 것이 도달하지 않는 수정이다.
+ */
+async function updateCommand(options) {
+  const project = projectPath(options);
+  const lockRecord = await getLock(project);
+  const lock = lockRecord.value;
+  const harnessDir = join(project, ".vibecode-harness");
+
+  const before = await harnessFileDigests(harnessDir).catch(() => ({}));
+  await mkdir(join(harnessDir, "backups"), { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  await writeJson(join(harnessDir, "backups", `${stamp}-harness.lock.json`), lock);
+
+  await installHarnessFiles(project);
+  const after = await harnessFileDigests(harnessDir);
+  const changed = Object.keys(after).filter((key) => before[key] !== after[key]);
+
+  const updated = { ...lock, ...after, updated_at: new Date().toISOString() };
+  await writeJson(lockRecord.path, updated);
+  const receipt = await writeReceipt(project, "update", {
+    kind: "update", status: changed.length ? "updated" : "unchanged",
+    runtime_profile: lock.runtime_profile, policy_profile: lock.policy_profile,
+    changed_files: changed
+  });
+  print({
+    status: changed.length ? "updated" : "unchanged",
+    runtime_profile: lock.runtime_profile,
+    policy_profile: lock.policy_profile,
+    changed_files: changed,
+    receipt,
+    next: changed.length ? "gg verify로 새 사본에서 검증하세요." : "이미 현재 번들과 같습니다."
+  });
+}
+
 async function configureCommand(options) {
   const project = projectPath(options);
   const lockRecord = await getLock(project);
@@ -1394,6 +1435,7 @@ async function main() {
     else if (command === "init") await initCommand(options);
     else if (command === "configure") await configureCommand(options);
     else if (command === "migrate") await migrateCommand(options);
+    else if (command === "update") await updateCommand(options);
     else if (command === "doctor") await doctorCommand(options);
     else if (command === "start") await startCommand(options);
     else if (command === "design") await designCommand(options);
