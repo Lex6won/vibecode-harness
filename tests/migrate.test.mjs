@@ -215,3 +215,59 @@ test("초기화되지 않은 폴더에서는 옮길 것이 없다고 말한다",
     await cleanup(project);
   }
 });
+
+// ---------------------------------------------------------------------------
+// 새 번들을 기존 프로젝트에 반영한다 (gg update)
+//
+// 하네스를 고쳐도 이미 초기화된 프로젝트에는 닿을 방법이 없었다. init 은 기존
+// lock 을 거부하고, configure 는 도구만 다루고, migrate 는 트랙이 같으면
+// 아무것도 하지 않는다. 훅의 결함을 고쳐도 그 훅을 실제로 쓰는 프로젝트는 옛
+// 파일을 계속 쓰게 된다 — 고친 것이 도달하지 않는 수정이다.
+// ---------------------------------------------------------------------------
+
+test("update 는 트랙을 바꾸지 않고 사본과 지문만 새로 맞춘다", async () => {
+  const project = await makeProject("gg_standard", { "app.py": "def a():\n    return 1\n" });
+  try {
+    const before = await lockOf(project);
+    // 사본이 옛 파일인 상태를 만든다.
+    await writeFile(join(project, ".vibecode-harness", "lib", "policy-engine.mjs"), "// 옛 사본\n");
+
+    const result = await runGg(project, ["update"]);
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+    const printed = verdict(result.stdout);
+    assert.equal(printed.status, "updated");
+    assert.ok(printed.changed_files.includes("policy_engine_sha256"), `무엇이 바뀌었는지 남아야 한다: ${JSON.stringify(printed.changed_files)}`);
+
+    const after = await lockOf(project);
+    assert.equal(after.runtime_profile, before.runtime_profile, "트랙은 그대로다");
+    assert.equal(after.policy_profile, before.policy_profile);
+    assert.equal(after.project_id, before.project_id);
+    assert.equal(after.policy_engine_sha256, before.policy_engine_sha256, "현재 번들의 지문으로 돌아와야 한다");
+  } finally {
+    await cleanup(project);
+  }
+});
+
+test("update 뒤에도 verify 의 변조 탐지에 걸리지 않는다", async () => {
+  const project = await makeProject("gg_standard", { "app.py": "def a():\n    return 1\n" });
+  try {
+    await runGg(project, ["update"]);
+    const verify = await runGg(project, ["verify", "--no-tests", "--skip-checker"]);
+    const failures = JSON.stringify(verdict(verify.stdout).policy_failures || []);
+    assert.doesNotMatch(failures, /변경되었습니다|changed after initialization/, `지문 불일치: ${failures}`);
+  } finally {
+    await cleanup(project);
+  }
+});
+
+test("이미 현재 번들과 같으면 바뀐 것이 없다고 말한다", async () => {
+  const project = await makeProject("gg_standard", { "app.py": "def a():\n    return 1\n" });
+  try {
+    const result = await runGg(project, ["update"]);
+    const printed = verdict(result.stdout);
+    assert.equal(printed.status, "unchanged");
+    assert.deepEqual(printed.changed_files, []);
+  } finally {
+    await cleanup(project);
+  }
+});
