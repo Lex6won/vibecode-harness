@@ -29,6 +29,9 @@ const EXIT = Object.freeze({
   SYSTEM: 70
 });
 
+/** init 과 migrate 가 받아들이는 트랙. 한 곳에서만 정한다 — 두 벌이 되면 갈라진다. */
+const MIGRATABLE_RUNTIMES = Object.freeze(["gg_standard", "python_internal", "node_web", "typescript_web", "typescript_postgres"]);
+
 const HARNESS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const POLICY_PATH = join(HARNESS_ROOT, "shared", "harness-core.yaml");
 const INSTITUTION_PROFILE_PATH = join(HARNESS_ROOT, "shared", "institution-profile.yaml");
@@ -98,6 +101,7 @@ function usage() {
   node bin/gg.mjs init --project <폴더> [--tools codex|claude|antigravity|claude-desktop|chatgpt-desktop|lovable|both|all|codex,claude] [--runtime gg_standard|python_internal|node_web|typescript_web|typescript_postgres] [--level L1|L2|L3] [--ci]
   node bin/gg.mjs init --interactive
   node bin/gg.mjs configure --project <folder> [--tools codex,claude,antigravity] [--remove codex,claude,antigravity]
+  node bin/gg.mjs migrate --project <폴더> --runtime gg_standard|python_internal|node_web|typescript_web|typescript_postgres [--level L1|L2|L3] [--force]
   node bin/gg.mjs doctor [--project <폴더>]
   node bin/gg.mjs start --project <폴더> --brief <업무 설명>
   node bin/gg.mjs design --project <폴더> [--database yes|no] [--admin yes|no] [--external-api yes|no] [--confirm]
@@ -806,19 +810,12 @@ async function interactiveInitCommand(options) {
   }
 }
 
-async function initCommand(options) {
-  const project = projectPath(options);
-  const tools = selectedTools(options.tools || "both");
-  const requestedRuntime = options.runtime || (String(options.tools || "").trim().toLowerCase() === "all" ? "typescript_postgres" : "typescript_web");
-  const runtime = requestedRuntime === "typescript_supabase" ? "typescript_postgres" : requestedRuntime;
-  const level = options.level || "L2";
-  if (!['gg_standard', 'python_internal', 'node_web', 'typescript_web', 'typescript_postgres'].includes(runtime)) throw new Error("허용되지 않은 --runtime 값입니다.");
-  if (includesTool(tools, TOOL_NAMES.lovable) && runtime !== "typescript_postgres") throw new Error("Lovable GitHub projects require the typescript_postgres runtime profile.");
-  if (!['L1', 'L2', 'L3'].includes(level)) throw new Error("--level은 L1, L2, L3 중 하나여야 합니다.");
-  await mkdir(project, { recursive: true });
+/**
+ * 승인 번들의 파일을 프로젝트로 복사한다. init 과 migrate 가 같은 것을 깐다 —
+ * 둘이 갈라지면 마이그레이션한 프로젝트만 옛 파일을 갖게 된다.
+ */
+async function installHarnessFiles(project) {
   const harnessDir = join(project, ".vibecode-harness");
-  const lockPath = join(harnessDir, "harness.lock.json");
-  if (await pathExists(lockPath)) throw new Error("이미 초기화된 프로젝트입니다. 기존 lock을 덮어쓰지 않습니다.");
   await mkdir(join(harnessDir, "policy"), { recursive: true });
   await mkdir(join(harnessDir, "bin"), { recursive: true });
   await mkdir(join(harnessDir, "lib"), { recursive: true });
@@ -833,6 +830,39 @@ async function initCommand(options) {
   await cp(RELEASE_INTEGRITY_PATH, join(harnessDir, "lib", "release-integrity.mjs"));
   await cp(POLICY_ENGINE_PATH, join(harnessDir, "lib", "policy-engine.mjs"));
   await cp(CHECKER_EVIDENCE_PATH, join(harnessDir, "lib", "checker-evidence.mjs"));
+  return harnessDir;
+}
+
+/** lock 에 새길 지문. verify 가 이 값으로 변조를 잡는다. */
+async function harnessFileDigests(harnessDir) {
+  return {
+    policy_sha256: await sha256(join(harnessDir, "policy", "harness-core.yaml")),
+    institution_profile_sha256: await sha256(join(harnessDir, "policy", "institution-profile.yaml")),
+    policy_profiles_sha256: await sha256(join(harnessDir, "policy", "policy-profiles.json")),
+    package_policy_sha256: await sha256(join(harnessDir, "policy", "package-policy.json")),
+    runner_sha256: await sha256(join(harnessDir, "bin", "gg.mjs")),
+    release_integrity_sha256: await sha256(join(harnessDir, "lib", "release-integrity.mjs")),
+    policy_engine_sha256: await sha256(join(harnessDir, "lib", "policy-engine.mjs")),
+    checker_evidence_sha256: await sha256(join(harnessDir, "lib", "checker-evidence.mjs")),
+    claude_hook_sha256: await sha256(join(harnessDir, "bin", "claude-pre-tool.mjs")),
+    antigravity_hook_sha256: await sha256(join(harnessDir, "bin", "antigravity-pre-tool.mjs"))
+  };
+}
+
+async function initCommand(options) {
+  const project = projectPath(options);
+  const tools = selectedTools(options.tools || "both");
+  const requestedRuntime = options.runtime || (String(options.tools || "").trim().toLowerCase() === "all" ? "typescript_postgres" : "typescript_web");
+  const runtime = requestedRuntime === "typescript_supabase" ? "typescript_postgres" : requestedRuntime;
+  const level = options.level || "L2";
+  if (!MIGRATABLE_RUNTIMES.includes(runtime)) throw new Error("허용되지 않은 --runtime 값입니다.");
+  if (includesTool(tools, TOOL_NAMES.lovable) && runtime !== "typescript_postgres") throw new Error("Lovable GitHub projects require the typescript_postgres runtime profile.");
+  if (!['L1', 'L2', 'L3'].includes(level)) throw new Error("--level은 L1, L2, L3 중 하나여야 합니다.");
+  await mkdir(project, { recursive: true });
+  const harnessDir = join(project, ".vibecode-harness");
+  const lockPath = join(harnessDir, "harness.lock.json");
+  if (await pathExists(lockPath)) throw new Error("이미 초기화된 프로젝트입니다. 기존 lock을 덮어쓰지 않습니다. 트랙을 바꾸려면 gg migrate를 쓰세요.");
+  await installHarnessFiles(project);
   const lock = {
     schema_version: 3,
     harness_version: "0.2.0",
@@ -843,16 +873,7 @@ async function initCommand(options) {
     policy_profile: policyProfileForRuntime(runtime),
     tools,
     allowed_languages: getPolicyProfile(policyProfileForRuntime(runtime)).allowed_languages,
-    policy_sha256: await sha256(join(harnessDir, "policy", "harness-core.yaml")),
-    institution_profile_sha256: await sha256(join(harnessDir, "policy", "institution-profile.yaml")),
-    policy_profiles_sha256: await sha256(join(harnessDir, "policy", "policy-profiles.json")),
-    package_policy_sha256: await sha256(join(harnessDir, "policy", "package-policy.json")),
-    runner_sha256: await sha256(join(harnessDir, "bin", "gg.mjs")),
-    release_integrity_sha256: await sha256(join(harnessDir, "lib", "release-integrity.mjs")),
-    policy_engine_sha256: await sha256(join(harnessDir, "lib", "policy-engine.mjs")),
-    checker_evidence_sha256: await sha256(join(harnessDir, "lib", "checker-evidence.mjs")),
-    claude_hook_sha256: await sha256(join(harnessDir, "bin", "claude-pre-tool.mjs")),
-    antigravity_hook_sha256: await sha256(join(harnessDir, "bin", "antigravity-pre-tool.mjs")),
+    ...(await harnessFileDigests(harnessDir)),
     managed_adapters: {},
     checker_machine_verdict: "pending_upstream_machine_verdict"
   };
@@ -942,6 +963,97 @@ async function initCommand(options) {
   await writeJson(lockPath, lock);
   await writeReceipt(project, "init", { kind: "harness_init", runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, antigravity_plugin: antigravityStatus, guidance_adapters: guidanceAdapters });
   print({ status: "initialized", project, runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, antigravity_plugin: antigravityStatus, guidance_adapters: guidanceAdapters, next: "gg doctor --project <프로젝트 폴더>" });
+}
+
+/**
+ * 이미 초기화된 프로젝트의 트랙을 바꾼다.
+ *
+ * 왜 필요한가: `gg init` 은 기존 lock 을 거부하고 `gg configure` 는 도구만
+ * 다룬다. 그래서 **한 번 정한 runtime 을 바꿀 방법이 없었다.** 기관이 표준
+ * 트랙(gg_standard)을 새로 정해도 기존 프로젝트는 옛 트랙에 묶인 채였고,
+ * 표준에 맞춰 일하려면 정책을 우회하는 수밖에 없었다 — 그러면 정책이 아니라
+ * 우회가 표준이 된다.
+ *
+ * 좁히는 방향에서는 지금 있는 파일이 새 정책을 위반할 수 있다. 그 경우
+ * 조용히 위반 상태로 만들지 않고 **무엇이 걸리는지 보여 주고 멈춘다.**
+ */
+async function migrateCommand(options) {
+  const project = projectPath(options);
+  const lockRecord = await getLock(project);
+  const lock = lockRecord.value;
+  const runtime = options.runtime;
+  if (!runtime) throw new Error("gg migrate에는 --runtime이 필요합니다. 예: gg migrate --runtime gg_standard");
+  if (!MIGRATABLE_RUNTIMES.includes(runtime)) throw new Error(`허용되지 않은 --runtime 값입니다. 가능한 값: ${MIGRATABLE_RUNTIMES.join(", ")}`);
+  const level = options.level || lock.level;
+  if (!["L1", "L2", "L3"].includes(level)) throw new Error("--level은 L1, L2, L3 중 하나여야 합니다.");
+
+  const fromProfile = lock.policy_profile;
+  const toProfile = policyProfileForRuntime(runtime);
+  if (lock.runtime_profile === runtime && level === lock.level) {
+    print({ status: "unchanged", runtime_profile: runtime, policy_profile: toProfile, reason: "이미 그 트랙입니다." });
+    return;
+  }
+
+  // 좁아지는 경우에만 기존 파일을 확인한다. 넓어지는 쪽은 걸릴 것이 없고,
+  // 큰 프로젝트 전체를 훑는 비용만 든다.
+  const before = new Set(getPolicyProfile(fromProfile)?.allowed_implementation_extensions || []);
+  const after = new Set(getPolicyProfile(toProfile)?.allowed_implementation_extensions || []);
+  const dropped = [...before].filter((extension) => !after.has(extension));
+  let violations = [];
+  if (dropped.length > 0) {
+    const files = await listFiles(project);
+    violations = files.filter((file) => languageFailureForPath(toProfile, file)).map((file) => relative(project, file));
+  }
+  if (violations.length > 0 && !options.force) {
+    const receipt = await writeReceipt(project, "migrate", {
+      kind: "migrate", status: "blocked", from: fromProfile, to: toProfile,
+      dropped_extensions: dropped, violation_count: violations.length, violations: violations.slice(0, 50)
+    });
+    print({
+      status: "blocked",
+      reason: `새 트랙이 허용하지 않는 파일이 ${violations.length}개 있습니다. 옮기거나 지운 뒤 다시 실행하세요.`,
+      dropped_extensions: dropped,
+      violations: violations.slice(0, 20),
+      receipt
+    });
+    process.exitCode = EXIT.POLICY_OR_RUNTIME;
+    return;
+  }
+
+  // 옛 lock 을 남긴다 — 무엇에서 무엇으로 옮겼는지 되짚을 수 있어야 한다.
+  const harnessDir = join(project, ".vibecode-harness");
+  await mkdir(join(harnessDir, "backups"), { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  await writeJson(join(harnessDir, "backups", `${stamp}-harness.lock.json`), lock);
+
+  await installHarnessFiles(project);
+  const migrated = {
+    ...lock,
+    level,
+    runtime_profile: runtime,
+    policy_profile: toProfile,
+    allowed_languages: getPolicyProfile(toProfile).allowed_languages,
+    ...(await harnessFileDigests(harnessDir)),
+    migrated_from: { runtime_profile: lock.runtime_profile, policy_profile: fromProfile, level: lock.level },
+    migrated_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+  await writeJson(lockRecord.path, migrated);
+  const receipt = await writeReceipt(project, "migrate", {
+    kind: "migrate", status: "migrated",
+    from: { runtime_profile: lock.runtime_profile, policy_profile: fromProfile, level: lock.level },
+    to: { runtime_profile: runtime, policy_profile: toProfile, level },
+    allowed_languages: migrated.allowed_languages,
+    forced_over_violations: violations.length > 0 ? violations.length : 0
+  });
+  print({
+    status: "migrated",
+    from: { runtime_profile: lock.runtime_profile, policy_profile: fromProfile },
+    to: { runtime_profile: runtime, policy_profile: toProfile },
+    allowed_languages: migrated.allowed_languages,
+    receipt,
+    next: "gg verify를 실행해 새 트랙에서 검증하세요."
+  });
 }
 
 async function configureCommand(options) {
@@ -1281,6 +1393,7 @@ async function main() {
     if (command === "init" && options.interactive) await interactiveInitCommand(options);
     else if (command === "init") await initCommand(options);
     else if (command === "configure") await configureCommand(options);
+    else if (command === "migrate") await migrateCommand(options);
     else if (command === "doctor") await doctorCommand(options);
     else if (command === "start") await startCommand(options);
     else if (command === "design") await designCommand(options);
