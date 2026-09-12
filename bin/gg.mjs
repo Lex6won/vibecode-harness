@@ -93,7 +93,7 @@ function usage() {
   print(`바이브코드 하네스 실행기
 
 사용법:
-  node bin/gg.mjs init --project <폴더> [--tools codex|claude|antigravity|claude-desktop|chatgpt-desktop|lovable|both|all|codex,claude] [--runtime python_internal|node_web|typescript_web|typescript_postgres] [--level L1|L2|L3] [--ci]
+  node bin/gg.mjs init --project <폴더> [--tools codex|claude|antigravity|claude-desktop|chatgpt-desktop|lovable|both|all|codex,claude] [--runtime gg_standard|python_internal|node_web|typescript_web|typescript_postgres] [--level L1|L2|L3] [--ci]
   node bin/gg.mjs init --interactive
   node bin/gg.mjs configure --project <folder> [--tools codex,claude,antigravity] [--remove codex,claude,antigravity]
   node bin/gg.mjs doctor [--project <폴더>]
@@ -436,12 +436,18 @@ async function policyCheck(project, lock) {
 
 async function runtimeCheck(lock) {
   const checks = [];
-  if (["node_web", "typescript_web", "typescript_postgres", "typescript_supabase"].includes(lock.runtime_profile)) {
+  // gg_standard 는 두 축을 모두 쓰므로 **양쪽 런타임이 다 있어야 한다.**
+  // 한쪽만 있는 환경에서 통과시키면, 못 돌린 축을 '문제 없음'으로 읽게 된다.
+  if (["gg_standard", "node_web", "typescript_web", "typescript_postgres", "typescript_supabase"].includes(lock.runtime_profile)) {
     const result = await run(process.execPath, ["--version"]);
     const major = Number((result.stdout.match(/v(\d+)/) || [])[1]);
     if (!Number.isInteger(major) || major < 22) checks.push(`Node.js 22 이상이 필요합니다. 현재: ${result.stdout.trim() || "확인 불가"}`);
   }
-  if (lock.runtime_profile === "python_internal" && !(await pythonCommand())) checks.push("Python 트랙에는 승인된 Python 런타임이 필요합니다.");
+  if (["gg_standard", "python_internal"].includes(lock.runtime_profile) && !(await pythonCommand())) {
+    checks.push(lock.runtime_profile === "gg_standard"
+      ? "기관 표준 트랙은 PyPI 축을 포함하므로 승인된 Python 런타임이 필요합니다."
+      : "Python 트랙에는 승인된 Python 런타임이 필요합니다.");
+  }
   return checks;
 }
 
@@ -482,17 +488,43 @@ async function runProjectTests(project, lock, options) {
   }
   const testsPath = join(project, "tests");
   if (await pathExists(testsPath)) {
-    if (lock.runtime_profile === "python_internal") {
+    if (["python_internal", "gg_standard"].includes(lock.runtime_profile)) {
       if (!options["run-tests"]) {
         return { status: "confirmation_required", command: "python -m pytest -q", reason: "테스트 실행은 프로젝트 코드를 실행합니다. 내용을 확인한 뒤 --run-tests로 명시 실행하세요." };
       }
       const python = await pythonCommand();
-      if (!python) return { status: "blocked", reason: "Python 트랙에 필요한 Python 런타임을 찾을 수 없습니다." };
+      if (!python) return { status: "blocked", reason: "Python 런타임을 찾을 수 없습니다. PyPI 축 테스트를 실행할 수 없습니다." };
       const result = await run(python.command, ["-m", "pytest", "-q"], { cwd: project });
       return { status: result.code === 0 ? "passed" : "failed", command: "python -m pytest -q", code: result.code, stderr: result.stderr.slice(-2000) };
     }
   }
   return { status: "not_configured", reason: "실행할 테스트 명령이 없습니다. L2 이상에서는 테스트를 추가해야 합니다." };
+}
+
+/** gg_standard 는 두 축을 모두 돌린다 — 한쪽만 통과한 것을 통과로 부르지 않는다. */
+async function runStandardTests(project, lock, options) {
+  const results = [];
+  const nodeConfigured = await pathExists(join(project, "package.json"));
+  if (nodeConfigured) {
+    results.push({ axis: "npm", ...(await runProjectTests(project, { ...lock, runtime_profile: "node_web" }, options)) });
+  }
+  if (await pathExists(join(project, "tests"))) {
+    results.push({ axis: "pypi", ...(await runProjectTests(project, { ...lock, runtime_profile: "python_internal" }, options)) });
+  }
+  const ran = results.filter((item) => item.status !== "not_configured");
+  if (ran.length === 0) {
+    return { status: "not_configured", reason: "실행할 테스트 명령이 없습니다. L2 이상에서는 테스트를 추가해야 합니다." };
+  }
+  // 가장 나쁜 상태가 전체 상태다 — 한 축이 막히거나 실패하면 통과가 아니다.
+  const order = ["blocked", "failed", "confirmation_required", "deferred", "skipped", "not_configured", "passed"];
+  const worst = ran.slice().sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status))[0];
+  return {
+    status: worst.status,
+    reason: worst.reason,
+    command: ran.map((item) => `${item.axis}: ${item.command || item.status}`).join(" · "),
+    axes: ran.map(({ axis, status, command, code }) => ({ axis, status, command: command || null, code: code ?? null })),
+    stderr: worst.stderr
+  };
 }
 
 async function runChecker(project, lock, env = process.env) {
@@ -699,7 +731,7 @@ async function interactiveInitCommand(options) {
       : "typescript_web";
     const runtime = options.runtime && options.runtime !== true
       ? options.runtime
-      : await prompt.question(`프로젝트 유형 (typescript_postgres, typescript_web, node_web, python_internal) [${defaultRuntime}]: `);
+      : await prompt.question(`프로젝트 유형 (gg_standard, typescript_postgres, typescript_web, node_web, python_internal) [${defaultRuntime}]: `);
     const level = options.level && options.level !== true
       ? options.level
       : await prompt.question("점검 수준 (L1, L2, L3) [L2]: ");
@@ -721,7 +753,7 @@ async function initCommand(options) {
   const requestedRuntime = options.runtime || (String(options.tools || "").trim().toLowerCase() === "all" ? "typescript_postgres" : "typescript_web");
   const runtime = requestedRuntime === "typescript_supabase" ? "typescript_postgres" : requestedRuntime;
   const level = options.level || "L2";
-  if (!['python_internal', 'node_web', 'typescript_web', 'typescript_postgres'].includes(runtime)) throw new Error("허용되지 않은 --runtime 값입니다.");
+  if (!['gg_standard', 'python_internal', 'node_web', 'typescript_web', 'typescript_postgres'].includes(runtime)) throw new Error("허용되지 않은 --runtime 값입니다.");
   if (includesTool(tools, TOOL_NAMES.lovable) && runtime !== "typescript_postgres") throw new Error("Lovable GitHub projects require the typescript_postgres runtime profile.");
   if (!['L1', 'L2', 'L3'].includes(level)) throw new Error("--level은 L1, L2, L3 중 하나여야 합니다.");
   await mkdir(project, { recursive: true });
@@ -1124,7 +1156,9 @@ async function verifyCommand(options) {
     process.exitCode = EXIT.POLICY_OR_RUNTIME;
     return;
   }
-  const test = await runProjectTests(project, lock, options);
+  const test = lock.runtime_profile === "gg_standard"
+    ? await runStandardTests(project, lock, options)
+    : await runProjectTests(project, lock, options);
   if (test.status === "failed" || test.status === "blocked" || test.status === "confirmation_required") {
     const receipt = await writeReceipt(project, "verify", { kind: "verify", status: "test_failed", test });
     print({ status: "blocked", test, receipt });

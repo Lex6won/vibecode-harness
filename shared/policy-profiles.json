@@ -1,6 +1,12 @@
 {
   "schema_version": 1,
   "profiles": {
+    "gg_standard": {
+      "display_name": "기관 표준 (Python · JavaScript · TypeScript · PyPI · npm)",
+      "allowed_languages": ["python", "javascript", "typescript"],
+      "allowed_package_ecosystems": ["pypi", "npm"],
+      "allowed_declarative_extensions": [".sql", ".json", ".yaml", ".yml", ".toml", ".html", ".css"]
+    },
     "general": {
       "display_name": "기본 호환형 (Python · JavaScript · TypeScript)",
       "allowed_languages": ["python", "javascript", "typescript"]
