@@ -1,24 +1,9 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { isDirectPackageInstall, languageFailureForPath, runtimeFailureForCommand } from "../lib/policy-engine.mjs";
+import { isDirectPackageInstall, languageFailureForPath, resolvePolicyProfile, runtimeFailureForCommand } from "../lib/policy-engine.mjs";
 
 function block(message) {
   process.stderr.write(`바이브코드 하네스 차단: ${message}\n`);
   process.exitCode = 2;
-}
-
-function policyProfileFromProject() {
-  let directory = resolve(process.cwd());
-  while (true) {
-    const lock = resolve(directory, ".vibecode-harness", "harness.lock.json");
-    if (existsSync(lock)) {
-      try { return JSON.parse(readFileSync(lock, "utf8")).policy_profile || "general"; } catch { return "general"; }
-    }
-    const parent = dirname(directory);
-    if (parent === directory) return "general";
-    directory = parent;
-  }
 }
 
 let raw = "";
@@ -29,7 +14,7 @@ try {
   const event = JSON.parse(raw);
   const input = event.tool_input || event.toolInput || {};
   const filePath = String(input.file_path || input.path || input.file || "");
-  const profile = policyProfileFromProject();
+  const profile = resolvePolicyProfile({ filePath, cwd: event.cwd });
   const languageFailure = languageFailureForPath(profile, filePath);
   if (languageFailure) {
     block(languageFailure);
