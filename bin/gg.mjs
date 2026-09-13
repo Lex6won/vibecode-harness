@@ -2,7 +2,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, join, resolve, relative, sep } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, extname, join, parse, resolve, relative, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
@@ -163,7 +164,8 @@ function usage() {
   print(`바이브코드 하네스 실행기
 
 사용법:
-  node bin/gg.mjs init --project <폴더> [--tools codex|claude|claude-desktop|chatgpt-desktop|lovable|both|all|codex,claude] [--runtime gg_standard|python_internal|node_web|typescript_web|typescript_postgres] [--level L1|L2|L3] [--ci]
+  node bin/gg.mjs init --project <폴더> [--tools codex|claude|claude-desktop|chatgpt-desktop|lovable|both|all|codex,claude] [--runtime gg_standard|python_internal|node_web|typescript_web|typescript_postgres] [--level L1|L2|L3] [--ci] [--allow-broad-scope]
+      드라이브 루트·홈 디렉터리·저장소 여러 개를 품은 폴더는 거부합니다. 의도한 것이면 --allow-broad-scope 로 승인하고, 그 사실은 lock 에 남습니다.
   node bin/gg.mjs init --interactive
   node bin/gg.mjs configure --project <folder> [--tools codex,claude,claude-desktop,chatgpt-desktop,lovable] [--remove codex,claude,claude-desktop,chatgpt-desktop,lovable]
   node bin/gg.mjs update --project <폴더>
@@ -858,6 +860,60 @@ async function interactiveInitCommand(options) {
 }
 
 /**
+ * 초기화 범위가 "프로젝트 하나"를 넘는지 본다.
+ *
+ * 왜 필요한가: 사용자가 작업 폴더 전체(예: `C:\coding`)나 홈 디렉터리에서
+ * `gg init` 을 실행한 일이 있었다. 그러면 그 아래의 **서로 무관한 저장소 수십 개**가
+ * 한 lock 에 묶이고, `gg verify` 는 옆 프로젝트의 Go 파일 때문에 막히며, Claude
+ * 훅은 다른 팀 저장소의 파일 쓰기까지 이 프로젝트의 정책으로 판정한다. 정책이
+ * 틀린 것이 아니라 **적용 단위가 틀린 것**인데, 그 상태에서는 어느 차단도 어느
+ * 통과도 근거가 되지 못한다.
+ *
+ * 그래서 다음을 "범위 과다"로 본다.
+ *   - 드라이브 루트(`C:\`, `/`)와 사용자 홈 디렉터리
+ *   - 깊이 2 안에 자기 `.git` 을 제외한 `.git` 이 2개 이상 (중첩 저장소)
+ *   - 서로 다른 바로 아래 하위 폴더에 프로젝트 선언(package.json ·
+ *     pyproject.toml · requirements.txt)이 2개 이상 (독립 프로젝트 여럿)
+ *
+ * 판정만 하고 결정은 호출자가 한다 — init 은 거부하고, doctor 는 경고한다.
+ * 이미 초기화된 프로젝트를 이 기준으로 깨뜨리지 않기 위해서다.
+ */
+const BROAD_SCOPE_SKIP_DIRECTORIES = new Set([...IGNORED_DIRECTORIES, ".claude", ".codex", ".github", ".agents", "__pycache__", ".idea", ".vscode"]);
+const PROJECT_MANIFESTS = Object.freeze(["package.json", "pyproject.toml", "requirements.txt"]);
+
+async function safeReaddir(directory) {
+  try { return await readdir(directory, { withFileTypes: true }); } catch { return []; }
+}
+
+async function broadScopeFindings(project) {
+  const root = resolve(project);
+  const reasons = [];
+  const nestedRepositories = [];
+  const manifestProjects = [];
+  const sameDirectory = (left, right) => (process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right);
+
+  if (sameDirectory(root, parse(root).root)) reasons.push(`드라이브 루트(${root})는 프로젝트 폴더가 아닙니다.`);
+  if (sameDirectory(root, resolve(homedir()))) reasons.push(`사용자 홈 디렉터리(${root})는 프로젝트 폴더가 아닙니다.`);
+  if (!(await pathExists(root))) return { broad: reasons.length > 0, reasons, nested_repositories: [], manifest_projects: [] };
+
+  for (const child of await safeReaddir(root)) {
+    if (!child.isDirectory() || BROAD_SCOPE_SKIP_DIRECTORIES.has(child.name)) continue;
+    const childPath = join(root, child.name);
+    const grandchildren = await safeReaddir(childPath);
+    if (grandchildren.some((entry) => entry.name === ".git")) nestedRepositories.push(child.name);
+    if (grandchildren.some((entry) => entry.isFile() && PROJECT_MANIFESTS.includes(entry.name))) manifestProjects.push(child.name);
+    for (const grandchild of grandchildren) {
+      if (!grandchild.isDirectory() || BROAD_SCOPE_SKIP_DIRECTORIES.has(grandchild.name)) continue;
+      const entries = await safeReaddir(join(childPath, grandchild.name));
+      if (entries.some((entry) => entry.name === ".git")) nestedRepositories.push(`${child.name}/${grandchild.name}`);
+    }
+  }
+  if (nestedRepositories.length >= 2) reasons.push(`범위 과다: 하위 저장소 ${nestedRepositories.length}개 포함 (${nestedRepositories.join(", ")})`);
+  if (manifestProjects.length >= 2) reasons.push(`범위 과다: 독립 프로젝트 선언 ${manifestProjects.length}개 포함 (${manifestProjects.join(", ")})`);
+  return { broad: reasons.length > 0, reasons, nested_repositories: nestedRepositories, manifest_projects: manifestProjects };
+}
+
+/**
  * 승인 번들의 파일을 프로젝트로 복사한다. init 과 migrate 가 같은 것을 깐다 —
  * 둘이 갈라지면 마이그레이션한 프로젝트만 옛 파일을 갖게 된다.
  */
@@ -906,10 +962,23 @@ async function initCommand(options) {
   if (!MIGRATABLE_RUNTIMES.includes(runtime)) throw new Error("허용되지 않은 --runtime 값입니다.");
   if (includesTool(tools, TOOL_NAMES.lovable) && !["gg_standard", "typescript_postgres"].includes(runtime)) throw new Error("Lovable GitHub projects require the gg_standard or typescript_postgres runtime profile.");
   if (!['L1', 'L2', 'L3'].includes(level)) throw new Error("--level은 L1, L2, L3 중 하나여야 합니다.");
-  await mkdir(project, { recursive: true });
   const harnessDir = join(project, ".vibecode-harness");
   const lockPath = join(harnessDir, "harness.lock.json");
   if (await pathExists(lockPath)) throw new Error("이미 초기화된 프로젝트입니다. 기존 lock을 덮어쓰지 않습니다. 트랙을 바꾸려면 gg migrate를 쓰세요.");
+  // 파일을 하나라도 쓰기 전에 범위를 본다. 거부할 때는 폴더도 만들지 않는다.
+  const scope = await broadScopeFindings(project);
+  const allowBroadScope = Boolean(options["allow-broad-scope"]);
+  if (scope.broad && !allowBroadScope) {
+    const detected = [...scope.nested_repositories, ...scope.manifest_projects];
+    throw new Error([
+      "범위 과다: 이 폴더는 하네스 프로젝트 하나로 초기화하기에 너무 넓습니다.",
+      ...scope.reasons.map((reason) => `  - ${reason}`),
+      detected.length ? `감지된 하위 프로젝트: ${[...new Set(detected)].join(", ")}` : null,
+      "특정 하위 프로젝트 폴더 하나를 골라 그 폴더를 --project 로 지정해 다시 실행하세요.",
+      "이 폴더 전체를 한 프로젝트로 다루는 것이 의도라면 --allow-broad-scope 를 붙여 명시적으로 승인할 수 있습니다. 그 승인은 lock 과 영수증에 남습니다."
+    ].filter(Boolean).join("\n"));
+  }
+  await mkdir(project, { recursive: true });
   await installHarnessFiles(project);
   const lock = {
     schema_version: 3,
@@ -925,6 +994,12 @@ async function initCommand(options) {
     managed_adapters: {},
     checker_machine_verdict: "pending_upstream_machine_verdict"
   };
+  // 넓은 범위를 사용자가 명시적으로 승인한 사실은 lock 에 남긴다 — 나중에 doctor 가
+  // 같은 경고를 낼 때 "그때 알고 승인한 것"과 "모르고 넘어간 것"을 구분할 수 있어야 한다.
+  const broadScopeOverride = scope.broad && allowBroadScope
+    ? { allowed_at: new Date().toISOString(), reasons: scope.reasons, nested_repositories: scope.nested_repositories, manifest_projects: scope.manifest_projects }
+    : null;
+  if (broadScopeOverride) lock.broad_scope_override = broadScopeOverride;
   await writeJson(lockPath, lock);
   if (includesTool(tools, TOOL_NAMES.codex)) {
     if (!(await pathExists(join(project, "AGENTS.md")))) await cp(CODEX_TEMPLATE_PATH, join(project, "AGENTS.md"));
@@ -1000,8 +1075,8 @@ async function initCommand(options) {
     }
   }
   await writeJson(lockPath, lock);
-  await writeReceipt(project, "init", { kind: "harness_init", runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, guidance_adapters: guidanceAdapters });
-  print({ status: "initialized", project, runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, guidance_adapters: guidanceAdapters, next: "gg doctor --project <프로젝트 폴더>" });
+  await writeReceipt(project, "init", { kind: "harness_init", runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, guidance_adapters: guidanceAdapters, broad_scope_override: broadScopeOverride });
+  print({ status: "initialized", project, runtime, tools: lock.tools, level, git_hook: hook, ci, claude_settings: claudeSettingsStatus, guidance_adapters: guidanceAdapters, broad_scope_override: broadScopeOverride, next: "gg doctor --project <프로젝트 폴더>" });
 }
 
 /**
@@ -1113,6 +1188,8 @@ async function updateCommand(options) {
   // still carry its copied plugin and lock metadata; retire only the plugin we
   // created, and leave a user-owned plugin in place for explicit review.
   const retiredAdapters = [];
+  const removedLegacyFiles = [];
+  const manualReviewRequired = [];
   const legacyAntigravity = "google-antigravity";
   const legacyPlugin = join(project, ".agents", "plugins", "vibecode-harness");
   const previousPendingRetirements = lock.retired_adapters_pending_cleanup || [];
@@ -1121,10 +1198,14 @@ async function updateCommand(options) {
     const plugin = legacyPlugin;
     if (lock.managed_adapters?.antigravity_plugin && await pathExists(plugin)) {
       await rm(plugin, { recursive: true, force: false });
+      removedLegacyFiles.push(relative(project, plugin));
       retiredAdapters.push(legacyAntigravity);
       pendingRetirements.delete(legacyAntigravity);
     } else if (await pathExists(plugin)) {
+      // 소유가 불분명한 플러그인은 지우지 않는다 — 사용자가 직접 만든 것일 수 있다.
+      // 대신 lock 에 남겨 verify 가 계속 막게 한다.
       pendingRetirements.add(legacyAntigravity);
+      manualReviewRequired.push(relative(project, plugin));
       retiredAdapters.push(`${legacyAntigravity}:manual_plugin_review_required`);
     } else {
       pendingRetirements.delete(legacyAntigravity);
@@ -1139,8 +1220,21 @@ async function updateCommand(options) {
   ]) {
     if (await pathExists(legacyPath)) {
       await rm(legacyPath, { recursive: true, force: true });
+      removedLegacyFiles.push(relative(project, legacyPath));
       if (!retiredAdapters.includes(legacyAntigravity)) retiredAdapters.push(legacyAntigravity);
     }
+  }
+  // 무엇을 지웠고 무엇을 남겼는지는 update 영수증 한 줄로는 부족하다 — 지운 파일이
+  // 하네스 소유였다는 근거와 남긴 파일이 왜 남았는지가 따로 남아야 한다.
+  let legacyRemovalReceipt = null;
+  if (removedLegacyFiles.length || manualReviewRequired.length) {
+    legacyRemovalReceipt = await writeReceipt(project, "legacy-adapter-removed", {
+      kind: "legacy_adapter_removed",
+      adapter: legacyAntigravity,
+      removed_files: removedLegacyFiles,
+      manual_review_required: manualReviewRequired,
+      reason: "Google Antigravity 는 2026-09-13 지원 대상에서 폐기됐다. 하네스가 생성한 파일만 제거하고 소유가 불분명한 경로는 남긴다."
+    });
   }
 
   const before = await harnessFileDigests(harnessDir).catch(() => ({}));
@@ -1185,7 +1279,8 @@ async function updateCommand(options) {
   const receipt = await writeReceipt(project, "update", {
     kind: "update", status: somethingChanged ? "updated" : "unchanged",
     runtime_profile: lock.runtime_profile, policy_profile: lock.policy_profile,
-    changed_files: changed, claude_hook: claudeHook, retired_adapters: retiredAdapters
+    changed_files: changed, claude_hook: claudeHook, retired_adapters: retiredAdapters,
+    removed_legacy_files: removedLegacyFiles, manual_review_required: manualReviewRequired, legacy_removal_receipt: legacyRemovalReceipt
   });
   print({
     status: somethingChanged ? "updated" : "unchanged",
@@ -1194,6 +1289,8 @@ async function updateCommand(options) {
     changed_files: changed,
     claude_hook: claudeHook,
     retired_adapters: retiredAdapters,
+    removed_legacy_files: removedLegacyFiles,
+    manual_review_required: manualReviewRequired,
     receipt,
     next: somethingChanged ? "gg verify로 새 사본에서 검증하세요." : "이미 현재 번들과 같습니다."
   });
@@ -1357,6 +1454,11 @@ async function doctorCommand(options) {
     message: lockError || (checker ? "하네스와 체커 실행 경로를 확인했습니다." : "체커가 없어 표준 보안 점검은 실행할 수 없습니다.")
   };
   if (lock) result.policy_failures = await policyCheck(project, lock.value);
+  // 범위 과다는 경고다, 실패가 아니다. 이미 그렇게 초기화돼 굴러가는 프로젝트를
+  // 여기서 막으면 사용자는 doctor 를 안 돌리게 될 뿐이다 — 대신 눈에 띄게 남긴다.
+  const scope = await broadScopeFindings(project);
+  result.warnings = scope.broad ? scope.reasons.map((reason) => `WARN ${reason}`) : [];
+  if (scope.broad && lock?.value.broad_scope_override) result.warnings.push(`WARN 이 범위는 init 시점(${lock.value.broad_scope_override.allowed_at})에 --allow-broad-scope 로 명시 승인됐습니다.`);
   print(result);
   if (!lock) process.exitCode = EXIT.CHECKER_INCOMPLETE;
 }

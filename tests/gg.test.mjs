@@ -142,6 +142,35 @@ test("retired Antigravity cannot be selected for a new project", async () => {
   }
 });
 
+test("init --tools all produces exactly the five supported tools and no Antigravity keys or files", async () => {
+  const project = await mkdtemp(join(tmpdir(), "vibecode-harness-five-tools-"));
+  try {
+    const init = await runGg(project, ["init", "--tools", "all", "--runtime", "gg_standard", "--level", "L1"]);
+    assert.equal(init.code, 0, init.stdout + init.stderr);
+    const lockText = await readFile(join(project, ".vibecode-harness", "harness.lock.json"), "utf8");
+    const lock = JSON.parse(lockText);
+    assert.deepEqual(lock.tools, ["codex", "claude-code", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
+    assert.equal(Object.hasOwn(lock, "antigravity_hook_sha256"), false);
+    assert.equal(Object.hasOwn(lock.managed_adapters, "antigravity_plugin"), false);
+    assert.doesNotMatch(lockText, /antigravity/i);
+    // 파일도 남지 않아야 한다 — 어댑터 사본, 훅, 플러그인 모두.
+    const generated = [];
+    async function walk(directory) {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        if (/antigravity/i.test(entry.name)) generated.push(path);
+        if (entry.isDirectory()) await walk(path);
+      }
+    }
+    await walk(project);
+    assert.deepEqual(generated, []);
+    await assert.rejects(stat(join(project, ".agents")));
+    await assert.rejects(stat(join(project, ".vibecode-harness", "bin", "antigravity-pre-tool.mjs")));
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
+
 test("configure adds and safely removes selected tool adapters", async () => {
   const project = await mkdtemp(join(tmpdir(), "vibecode-harness-configure-"));
   try {
@@ -188,7 +217,20 @@ test("update retires a managed legacy Antigravity adapter", async () => {
     assert.equal(updated.antigravity_hook_sha256, undefined);
     await assert.rejects(stat(plugin));
     await assert.rejects(stat(join(project, ".vibecode-harness", "bin", "antigravity-pre-tool.mjs")));
+    await assert.rejects(stat(join(project, ".vibecode-harness", "adapters", "antigravity")));
     assert.match(update.stdout, /retired_adapters/);
+    assert.equal(updated.managed_adapters.antigravity_plugin, undefined);
+    // 지운 사실은 영수증에 남아야 한다 — 어느 파일을 하네스 소유로 보고 지웠는지가 근거다.
+    const receipts = (await readdir(join(project, "evidence"))).filter((name) => name.endsWith("-legacy-adapter-removed.json"));
+    assert.equal(receipts.length, 1, "legacy_adapter_removed 영수증이 정확히 한 장 있어야 한다");
+    const receipt = JSON.parse(await readFile(join(project, "evidence", receipts[0]), "utf8"));
+    assert.equal(receipt.kind, "legacy_adapter_removed");
+    assert.equal(receipt.adapter, "google-antigravity");
+    const removed = receipt.removed_files.map((item) => item.replace(/\\/g, "/"));
+    assert.ok(removed.includes(".vibecode-harness/bin/antigravity-pre-tool.mjs"), JSON.stringify(removed));
+    assert.ok(removed.includes(".vibecode-harness/adapters/antigravity"), JSON.stringify(removed));
+    assert.ok(removed.includes(".agents/plugins/vibecode-harness"), JSON.stringify(removed));
+    assert.deepEqual(receipt.manual_review_required, []);
   } finally {
     await rm(project, { recursive: true, force: true });
   }
@@ -210,9 +252,21 @@ test("an unowned retired Antigravity plugin blocks verification until manual cle
     assert.equal(update.code, 0, update.stdout + update.stderr);
     const updated = JSON.parse(await readFile(lockPath, "utf8"));
     assert.deepEqual(updated.retired_adapters_pending_cleanup, ["google-antigravity"]);
+    // 소유가 불분명한 플러그인은 자동 삭제되지 않고 그대로 남아야 한다.
+    assert.ok(await stat(plugin));
+    assert.match(update.stdout, /manual_plugin_review_required/);
+    const receipts = (await readdir(join(project, "evidence"))).filter((name) => name.endsWith("-legacy-adapter-removed.json"));
+    assert.equal(receipts.length, 1);
+    const receipt = JSON.parse(await readFile(join(project, "evidence", receipts[0]), "utf8"));
+    assert.deepEqual(receipt.removed_files, []);
+    assert.deepEqual(receipt.manual_review_required.map((item) => item.replace(/\\/g, "/")), [".agents/plugins/vibecode-harness"]);
     const blocked = await runGg(project, ["build"]);
     assert.equal(blocked.code, 10, blocked.stdout + blocked.stderr);
     assert.match(blocked.stdout, /Retired Google Antigravity plugin remains/);
+    // verify 도 같은 이유로 막혀야 한다 — build 만 막고 verify 가 통과하면 훅과 CI 가 열린다.
+    const verifyBlocked = await runGg(project, ["verify"]);
+    assert.equal(verifyBlocked.code, 10, verifyBlocked.stdout + verifyBlocked.stderr);
+    assert.match(verifyBlocked.stdout, /Retired Google Antigravity plugin remains/);
 
     await rm(plugin, { recursive: true, force: true });
     const cleared = await runGg(project, ["update"]);
