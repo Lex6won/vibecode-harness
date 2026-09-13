@@ -1,5 +1,7 @@
 # Harness Manager · 다중 도구 적대적 검증 기록
 
+> 참고: Google Antigravity 는 2026-09-13 지원 대상에서 폐기됐다. 아래 언급은 당시 기록이다.
+
 ## 범위
 
 이번 검증은 Harness Manager, 정책 프로필, 다중 도구 어댑터, Lovable Git

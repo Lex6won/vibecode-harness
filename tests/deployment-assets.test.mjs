@@ -12,6 +12,10 @@ test("pilot portal labels a PEM-verified unsigned demonstration installer separa
   assert.equal(index.installer.signature_status, "pem_bundle_verified_unsigned_demo");
   assert.match(index.installer.download_url, /\/v0\.2\.0-demo\.\d+\//);
   assert.deepEqual(index.capabilities.supported_tools, ["codex", "claude-code", "claude-desktop", "chatgpt-codex-desktop", "lovable-github"]);
+  // 폐기된 도구가 어떤 키 아래로도 되살아나지 않는다 — 포털은 이 파일로 지원 도구를 그린다.
+  assert.equal(index.capabilities.supported_tools.includes("google-antigravity"), false);
+  assert.ok(index.capabilities.supported_tools.includes("lovable-github"));
+  assert.doesNotMatch(JSON.stringify(index), /antigravity/i);
   assert.match(index.capabilities.update_policy, /does not update automatically/);
   assert.match(app, /installer_published/);
   assert.match(app, /demo_installer_published/);

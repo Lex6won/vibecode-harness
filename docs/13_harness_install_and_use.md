@@ -66,6 +66,7 @@ TypeScript 웹 도구를 Codex와 Claude Code에 적용하는 예시다.
 |  | `typescript_postgres` | JavaScript·TypeScript·PostgreSQL 공통 프로필 (`typescript_supabase`는 기존 프로젝트 호환 별칭) |
 |  | `typescript_web` | TypeScript 기반 웹·업무 도구 |
 | `--level` | `L1`, `L2`, `L3` | 안내, 검증, 릴리스 준비 수준 |
+| `--allow-broad-scope` | (플래그) | 드라이브 루트·홈 디렉터리·저장소 여러 개를 품은 폴더는 기본적으로 초기화를 거부한다. 그 폴더 전체를 한 프로젝트로 다루는 것이 의도일 때만 붙이며, 승인 사실은 lock 과 영수증에 남고 `gg doctor` 가 계속 경고한다 |
 
 기본 허용 언어는 Python, JavaScript, TypeScript다. Java, Go, PHP, Ruby, C#, Rust는 기본 정책에서 차단한다. 정식 예외는 정책 파일을 직접 고치는 방식이 아니라 기관 승인 번들로만 적용한다.
 
