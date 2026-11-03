@@ -1,6 +1,9 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
-  [string]$InstallDir = (Join-Path $env:LOCALAPPDATA "Gyeonggi\\VibeCodeHarness"),
+  # README·docs/18 이 안내하는 경로와 같아야 한다 - 두 문서는 github-pilot 하위 폴더를 가리킨다.
+  [string]$InstallDir = (Join-Path $env:LOCALAPPDATA "Gyeonggi\VibeCodeHarness\github-pilot"),
+  # 없을 때 winget 으로 Node.js LTS·Python 설치를 시도한다(설치 창 승인은 사용자). 스위치가 없으면 안내만 하고 멈춘다.
+  [switch]$InstallPrerequisites,
   [switch]$SkipChecker,
   [switch]$AllowGitHubPilotSource,
   [switch]$AddToUserPath
@@ -50,16 +53,31 @@ function Find-Python {
   return $python
 }
 
+function Invoke-WingetInstall {
+  param([string]$PackageId)
+  $winget = Find-CommandPath "winget"
+  if ($null -eq $winget) { return $false }
+  Write-Host "Installing $PackageId with winget (approve the Windows prompt if one appears)..."
+  & $winget install --id $PackageId --exact --source winget --accept-package-agreements --accept-source-agreements --scope user
+  return ($LASTEXITCODE -eq 0)
+}
+
 function InstallPrerequisites {
   $node = Find-Node
+  if ($null -eq $node -and $InstallPrerequisites) {
+    if (Invoke-WingetInstall "OpenJS.NodeJS.LTS") { $node = Find-Node }
+  }
   if ($null -eq $node) {
-    Stop-Install "Node.js 22 or later is required. Install it with: winget install OpenJS.NodeJS.LTS"
+    Stop-Install "Node.js 22 or later is required. Install it with: winget install OpenJS.NodeJS.LTS (or re-run with -InstallPrerequisites)"
   }
 
   if (-not $SkipChecker) {
     $python = Find-Python
+    if ($null -eq $python -and $InstallPrerequisites) {
+      if (Invoke-WingetInstall "Python.Python.3.13") { $python = Find-Python }
+    }
     if ($null -eq $python) {
-      Stop-Install "Python is required for the legacy local checker path. Install it with: winget install Python.Python.3.13"
+      Stop-Install "Python is required for the local checker path. Install it with: winget install Python.Python.3.13 (or re-run with -InstallPrerequisites)"
     }
   }
 
@@ -132,9 +150,24 @@ function Write-InstallReceipt {
   [System.IO.File]::WriteAllText($receiptPath, $json, [System.Text.UTF8Encoding]::new($false))
 }
 
+function Retire-LegacyInstall {
+  # M7: 예전 기본 경로(…\VibeCodeHarness)에 설치본이 있으면 새 기본 경로(…\github-pilot)와 두 벌이 공존하고,
+  # PATH 에 등록된 옛 gg.cmd 가 계속 쓰인다. 옛 런처를 비활성 이름으로 옮기고 사용자에게 알린다(삭제하지 않는다).
+  param([string]$Destination)
+  $legacyRoot = Split-Path -Parent $Destination
+  if ((Split-Path -Leaf $Destination) -ne "github-pilot") { return $null }
+  $legacyLauncher = Join-Path $legacyRoot "gg.cmd"
+  if (-not (Test-Path -LiteralPath $legacyLauncher)) { return $null }
+  $retired = "$legacyLauncher.superseded-$PID"
+  Rename-Item -LiteralPath $legacyLauncher -NewName (Split-Path -Leaf $retired)
+  Write-Warning "Previous harness launcher found at $legacyLauncher. It was renamed to $retired so that only the new installation ($Destination) is used. If $legacyRoot is on your PATH, replace it with $Destination (see README: 이전 설치 정리)."
+  return $retired
+}
+
 try {
   $node = InstallPrerequisites
   $source = Get-HarnessSource
+  $retiredLauncher = Retire-LegacyInstall -Destination $InstallDir
   $backup = Copy-HarnessToInstallDir -Source $source -Destination $InstallDir
 
   $wrapper = Join-Path $InstallDir "gg.cmd"
@@ -148,6 +181,12 @@ try {
     $receiptPath = Join-Path $InstallDir ".vibecode-harness-install.json"
     $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
     $receipt | Add-Member -NotePropertyName "previous_install_backup" -NotePropertyValue $backup
+    [System.IO.File]::WriteAllText($receiptPath, ($receipt | ConvertTo-Json -Depth 4), [System.Text.UTF8Encoding]::new($false))
+  }
+  if ($retiredLauncher) {
+    $receiptPath = Join-Path $InstallDir ".vibecode-harness-install.json"
+    $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+    $receipt | Add-Member -NotePropertyName "retired_legacy_launcher" -NotePropertyValue $retiredLauncher
     [System.IO.File]::WriteAllText($receiptPath, ($receipt | ConvertTo-Json -Depth 4), [System.Text.UTF8Encoding]::new($false))
   }
 
