@@ -28,6 +28,7 @@ import {
 const harnessRoot = resolve(import.meta.dirname, "..");
 const gg = join(harnessRoot, "bin", "gg.mjs");
 const EXIT = { PACKAGE: 20, CHECKER_BLOCK: 40, CHECKER_INCOMPLETE: 41, POLICY: 10 };
+const BSLASH = String.fromCharCode(92);
 
 function runGg(project, args, env) {
   return new Promise((resolvePromise) => {
@@ -154,13 +155,21 @@ test("영수증은 0.6 필드(intel_gap · dependency_check · conditional_crite
 });
 
 test("버전 비교 — 못 읽으면 통과가 아니다", () => {
-  assert.deepEqual(parseCheckerVersion("vibecode-checker (gvskb) 0.6.1"), [0, 6, 1]);
+  assert.deepEqual([...parseCheckerVersion("vibecode-checker (gvskb) 0.6.1")], [0, 6, 1]);
+  assert.equal(parseCheckerVersion("0.6.0rc1").prerelease, true);
   assert.equal(checkerVersionSatisfies("0.6.0"), true);
   assert.equal(checkerVersionSatisfies("0.6.1"), true);
   assert.equal(checkerVersionSatisfies("1.0.0"), true);
   assert.equal(checkerVersionSatisfies("0.5.15"), false);
   assert.equal(checkerVersionSatisfies(null), false);
   assert.equal(checkerVersionSatisfies("latest"), false);
+  // M4 — 느슨한 정규식이 집던 것들: 다른 버전 문자열, pre-release.
+  assert.equal(parseCheckerVersion("Python 3.11.9 / gvskb 0.5.3"), null);
+  assert.equal(checkerVersionSatisfies("Python 3.11.9 / gvskb 0.5.3"), false);
+  assert.equal(checkerVersionSatisfies("0.6.0rc1"), false);
+  assert.equal(checkerVersionSatisfies("0.6.0.dev1"), false);
+  assert.equal(checkerVersionSatisfies("0.6.1rc1"), true, "0.6.1 의 pre-release 는 0.6.0 보다 크다");
+  assert.equal(checkerVersionSatisfies("vibecode-checker (gvskb) 0.6.1"), true);
 });
 
 // ---------------------------------------------------------------------------
@@ -390,6 +399,194 @@ test("옛 matcher(Write|Edit|MultiEdit|Bash) 로 남은 등록은 gg update 가 
     assert.equal(after.hooks.PreToolUse[0].matcher, "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell");
     const again = await runGg(project, ["update"], checker.env);
     assert.equal(printed(again).claude_hook, "already_configured");
+  } finally {
+    await cleanup(project, checker.directory);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 6. 47차 적대적 리뷰 반영 — 실측 케이스
+// ---------------------------------------------------------------------------
+
+test("M2: verdict blocked 는 파일 상한·의존성 미파싱 같은 미완 사유가 있어도 40 이다", async () => {
+  const checker = await fakeChecker({ report: report({ verdict: "blocked", reason: "KEV", block_reasons: [{ package: "kevpkg" }], conditional_criteria: [], intel_gap: "" }, {
+    skipped_files: [{ path: "x.ts", reason: "max_files=1 초과" }],
+    dependency_audit: { audits: [{ verdict: "unparsed", requires_review: true, parsed_count: 0 }] }
+  }), scanExit: 2 });
+  const project = await makeProject(checker.env);
+  await writeFile(join(project, "package.json"), JSON.stringify({ name: "x", private: true, type: "module", scripts: { test: "node --test" }, dependencies: { zod: "3.24.0" } }));
+  try {
+    const run = await runGg(project, ["verify", "--local-checker", "--run-tests"], checker.env);
+    assert.equal(run.code, EXIT.CHECKER_BLOCK, run.stdout + run.stderr);
+    assert.equal(printed(run).status, "blocked");
+    assert.equal((await latestReceipt(project, "-checker-evidence.json")).checker_status, "blocked");
+  } finally {
+    await cleanup(project, checker.directory);
+  }
+});
+
+test("L3·L5: 패키지 검사 생략(mode=off)과 비판정 종료코드(64·66)는 incomplete 다", async () => {
+  const off = await fakeChecker({ report: report({ verdict: "approved", reason: "", block_reasons: [], conditional_criteria: [], intel_gap: "" }, { dependency_check: { mode: "off", packages_parsed: 0, intel: null } }) });
+  const offProject = await makeProject(off.env);
+  try {
+    const run = await runGg(offProject, ["verify", "--local-checker", "--run-tests"], off.env);
+    assert.equal(run.code, EXIT.CHECKER_INCOMPLETE, run.stdout + run.stderr);
+    assert.match(printed(run).checker.reason, /mode=off/);
+  } finally {
+    await cleanup(offProject, off.directory);
+  }
+  const usage = await fakeChecker({ report: report({ verdict: "approved", reason: "", block_reasons: [] }), scanExit: 64 });
+  const usageProject = await makeProject(usage.env);
+  try {
+    const run = await runGg(usageProject, ["verify", "--local-checker", "--run-tests"], usage.env);
+    assert.equal(run.code, EXIT.CHECKER_INCOMPLETE, run.stdout + run.stderr);
+    assert.match(printed(run).checker.reason, /종료코드 64/);
+    assert.equal(await latestReceipt(usageProject, "-checker-evidence.json"), null);
+  } finally {
+    await cleanup(usageProject, usage.directory);
+  }
+});
+
+test("M5: package check 는 종료코드와 교차 확인한다 — JSON 통과·종료 2 는 차단, 충돌 기록", async () => {
+  const { run, out, receipt } = await packageCheck({ verdict: "ok", checked: true, vulnerability_count: 0, requires_review: false, exit_code: 2 });
+  assert.equal(run.code, EXIT.PACKAGE, run.stdout + run.stderr);
+  assert.equal(out.status, "blocked");
+  assert.deepEqual(receipt.checker_exit_conflict, { exit_code: 2, json_status: "passed" });
+  // 취약(JSON)·종료 1 은 정상 조합 — 충돌 아님. severity 는 영수증에 남는다.
+  const vulnerable = await packageCheck({ verdict: "vulnerable", verdict_severity: "high", checked: true, vulnerability_count: 1, exit_code: 1 });
+  assert.equal(vulnerable.receipt.checker_exit_conflict, null);
+  assert.equal(vulnerable.receipt.severity, "high");
+  const suspicious = await packageCheck({ verdict: "suspicious_name", verdict_severity: "medium", checked: true, vulnerability_count: 0, requires_review: true, exit_code: 1 });
+  assert.equal(suspicious.out.status, "review_required");
+  assert.equal(suspicious.receipt.severity, "medium");
+});
+
+test("H4: checker_env 는 GVSKB_* 만 받고, 지문이 깨진 사본의 env 는 doctor 가 쓰지 않는다", async () => {
+  const checker = await fakeChecker({ report: report({ verdict: "approved", reason: "", block_reasons: [], conditional_criteria: [], intel_gap: "" }) });
+  const project = await makeProject(checker.env);
+  // 가짜 status 가 받은 환경변수를 되돌려 주게 한다.
+  await writeFile(join(project, "status"), "process.stdout.write(JSON.stringify({ version: '0.6.1', intel: { state: 'ok' }, install_identity: { commit_id: process.env.PYTHONPATH || process.env.GVSKB_MODE || 'none' } }) + '\\n');\n");
+  try {
+    const profilePath = join(project, ".vibecode-harness", "policy", "institution-profile.yaml");
+    const original = await readFile(profilePath, "utf8");
+    // 사본을 변조해 PYTHONPATH 와 GVSKB_MODE 를 넣는다 → 지문 불일치.
+    await writeFile(profilePath, original.replace("checker_env: {}", "checker_env:\n    PYTHONPATH: C:/evil\n    GVSKB_MODE: offline"));
+    const doctor = await runGg(project, ["doctor"], checker.env);
+    const out = printed(doctor);
+    assert.ok(out.policy_failures.some((line) => /기관 프로파일이 초기화 이후 변경/.test(line)), JSON.stringify(out.policy_failures));
+    assert.equal(out.checker.checker_env_source, "harness_default", "지문이 깨진 사본의 env 는 쓰지 않는다");
+    assert.deepEqual(out.checker.checker_env, {});
+    assert.equal(out.checker.commit, "none", "변조된 PYTHONPATH·GVSKB_MODE 가 체커에 전달되면 안 된다");
+    assert.ok(out.warnings.some((line) => /checker_env 를 적용하지 않았습니다/.test(line)), JSON.stringify(out.warnings));
+    const verify = await runGg(project, ["verify", "--local-checker", "--run-tests"], checker.env);
+    assert.equal(verify.code, EXIT.POLICY, "지문이 깨졌으므로 verify 는 정책 단계에서 막힌다");
+    await writeFile(profilePath, original);
+    const ok = await runGg(project, ["doctor"], checker.env);
+    assert.equal(printed(ok).checker.checker_env_source, "project_snapshot");
+  } finally {
+    await cleanup(project, checker.directory);
+  }
+});
+
+test("M6: checker_env 인라인 맵·허용되지 않은 키는 조용히 비우지 않고 incomplete/경고다", async () => {
+  const checker = await fakeChecker({ report: report({ verdict: "approved", reason: "", block_reasons: [], conditional_criteria: [], intel_gap: "" }) });
+  const project = await makeProject(checker.env);
+  try {
+    const profilePath = join(project, ".vibecode-harness", "policy", "institution-profile.yaml");
+    const lockPath = join(project, ".vibecode-harness", "harness.lock.json");
+    const original = await readFile(profilePath, "utf8");
+    const rehash = async () => {
+      const { createHash } = await import("node:crypto");
+      const lock = JSON.parse(await readFile(lockPath, "utf8"));
+      lock.institution_profile_sha256 = createHash("sha256").update(await readFile(profilePath)).digest("hex");
+      await writeFile(lockPath, JSON.stringify(lock, null, 2));
+    };
+    await writeFile(profilePath, original.replace("checker_env: {}", "checker_env: { GVSKB_MODE: offline }"));
+    await rehash(); // 기관이 배포한 프로파일이 인라인 맵이었다고 가정(지문은 맞음)
+    const verify = await runGg(project, ["verify", "--local-checker", "--run-tests"], checker.env);
+    assert.equal(verify.code, EXIT.CHECKER_INCOMPLETE, verify.stdout + verify.stderr);
+    assert.match(printed(verify).checker.reason, /인라인 맵/);
+    const doctor = await runGg(project, ["doctor"], checker.env);
+    assert.ok(printed(doctor).warnings.some((line) => /인라인 맵/.test(line)));
+    // 허용되지 않은 키(PYTHONPATH)는 거부 사유가 된다.
+    await writeFile(profilePath, original.replace("checker_env: {}", "checker_env:\n    PYTHONPATH: C:/evil"));
+    await rehash();
+    const rejected = await runGg(project, ["verify", "--local-checker", "--run-tests"], checker.env);
+    assert.equal(rejected.code, EXIT.CHECKER_INCOMPLETE);
+    assert.match(printed(rejected).checker.reason, /허용되지 않은 키.*PYTHONPATH/);
+    // 큰따옴표 값은 이스케이프가 풀리고, 허용된 블록은 그대로 적용된다.
+    const unc = BSLASH + BSLASH + "fileserver" + BSLASH + "gvskb-intel";
+    await writeFile(profilePath, original.replace("checker_env: {}", "checker_env:\n    GVSKB_INTEL_DIR: " + JSON.stringify(unc) + "\n    GVSKB_MODE: offline"));
+    await rehash();
+    const ok = await runGg(project, ["doctor"], checker.env);
+    assert.deepEqual(printed(ok).checker.checker_env, { GVSKB_INTEL_DIR: unc, GVSKB_MODE: "offline" });
+  } finally {
+    await cleanup(project, checker.directory);
+  }
+});
+
+test("M1: settings.json 에서 훅 등록을 지우거나 matcher 를 좁히면 verify 가 막고 doctor 는 update_required 다", async () => {
+  const checker = await fakeChecker({ report: report({ verdict: "approved", reason: "", block_reasons: [], conditional_criteria: [], intel_gap: "" }) });
+  const project = await makeProject(checker.env, { tools: "claude" });
+  try {
+    const settingsPath = join(project, ".claude", "settings.json");
+    const settings = JSON.parse(await readFile(settingsPath, "utf8"));
+    settings.hooks.PreToolUse[0].matcher = "Write|Edit|MultiEdit|Bash";
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2));
+    const narrowed = await runGg(project, ["verify", "--run-tests"], checker.env);
+    assert.equal(narrowed.code, EXIT.POLICY, narrowed.stdout + narrowed.stderr);
+    assert.match(printed(narrowed).policy_failures.join("\n"), /훅 등록.*구형/);
+    assert.equal(printed(await runGg(project, ["doctor"], checker.env)).adapters.claude_code, "update_required");
+    await writeFile(settingsPath, JSON.stringify({ hooks: { PreToolUse: [] } }, null, 2));
+    const removed = await runGg(project, ["verify", "--run-tests"], checker.env);
+    assert.equal(removed.code, EXIT.POLICY);
+    assert.match(printed(removed).policy_failures.join("\n"), /훅 등록.*없거나 구형/);
+    const update = await runGg(project, ["update"], checker.env);
+    assert.equal(update.code, 0, update.stdout + update.stderr);
+    const restored = await runGg(project, ["verify", "--run-tests"], checker.env);
+    assert.equal(restored.code, 0, restored.stdout + restored.stderr);
+  } finally {
+    await cleanup(project, checker.directory);
+  }
+});
+
+test("M10: 옛 등록이 둘이거나 혼합 항목과 현행이 공존해도 우리 훅은 한 번만 남는다", async () => {
+  const checker = await fakeChecker({ report: {} });
+  const project = await makeProject(checker.env, { tools: "claude" });
+  try {
+    const settingsPath = join(project, ".claude", "settings.json");
+    const settings = JSON.parse(await readFile(settingsPath, "utf8"));
+    const current = settings.hooks.PreToolUse[0];
+    const legacy = { matcher: "Write|Edit|MultiEdit|Bash", hooks: [{ type: "command", command: "node .vibecode-harness/bin/claude-pre-tool.mjs" }] };
+    const mixed = { matcher: "Bash", hooks: [{ type: "command", command: "echo other" }, { type: "command", command: "node .vibecode-harness/bin/claude-pre-tool.mjs" }] };
+    settings.hooks.PreToolUse = [legacy, mixed, current, JSON.parse(JSON.stringify(legacy))];
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2));
+    const update = await runGg(project, ["update"], checker.env);
+    assert.equal(update.code, 0, update.stdout + update.stderr);
+    const after = JSON.parse(await readFile(settingsPath, "utf8"));
+    const ours = after.hooks.PreToolUse.flatMap((entry) => entry.hooks.filter((hook) => JSON.stringify(hook).includes("claude-pre-tool.mjs")));
+    assert.equal(ours.length, 1, JSON.stringify(after.hooks.PreToolUse));
+    assert.ok(after.hooks.PreToolUse.some((entry) => entry.matcher === "Bash" && entry.hooks.some((hook) => hook.command === "echo other")), "남의 훅은 보존된다");
+    assert.ok(after.hooks.PreToolUse.some((entry) => entry.matcher === "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell"));
+  } finally {
+    await cleanup(project, checker.directory);
+  }
+});
+
+test("L8: policy_profile 이 어긋난 lock 은 gg update 가 복구한다(migrate 는 같은 트랙이면 unchanged)", async () => {
+  const checker = await fakeChecker({ report: {} });
+  const project = await makeProject(checker.env);
+  try {
+    const lockPath = join(project, ".vibecode-harness", "harness.lock.json");
+    const lock = JSON.parse(await readFile(lockPath, "utf8"));
+    lock.policy_profile = "general";
+    await writeFile(lockPath, JSON.stringify(lock, null, 2));
+    const migrate = await runGg(project, ["migrate", "--runtime", "typescript_web"], checker.env);
+    assert.equal(printed(migrate).status, "unchanged");
+    const update = await runGg(project, ["update"], checker.env);
+    assert.equal(update.code, 0, update.stdout + update.stderr);
+    assert.equal(JSON.parse(await readFile(lockPath, "utf8")).policy_profile, "typescript_web");
+    assert.equal((await runGg(project, ["verify", "--run-tests"], checker.env)).code, 0);
   } finally {
     await cleanup(project, checker.directory);
   }

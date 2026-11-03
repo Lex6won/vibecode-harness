@@ -31,7 +31,8 @@ function runCommand(command, args, cwd) {
   });
 }
 
-async function fakeCheckerEnvironment(report = { scanned_files: ["app.ts"], skipped_files: [], profile: "web-civil-service", summary: { finding_count: 0 } }) {
+// 0.6 이상 체커의 결과에는 gate 가 있어야 한다(없으면 incomplete, 47차 M3) — 기본 보고서에 approved gate 를 둔다.
+async function fakeCheckerEnvironment(report = { scanned_files: ["app.ts"], skipped_files: [], profile: "web-civil-service", summary: { finding_count: 0 }, gate: { verdict: "approved", reason: "", block_reasons: [], conditional_criteria: [], intel_gap: "" } }) {
   const directory = await mkdtemp(join(tmpdir(), "vibecode-harness-fake-gvskb-"));
   const scripts = join(directory, "Python", "Python313", "Scripts");
   await mkdir(scripts, { recursive: true });

@@ -214,6 +214,14 @@ gvskb scan C:\work\my-service -o 보안점검.md
 
 그 뒤 프로젝트에서 `& $gg doctor --project C:\work\my-service`를 실행해 상태를 확인합니다.
 
+### 이전 설치 정리 — `VibeCodeHarness\gg.cmd` 가 남아 있습니다
+
+0.3.0 부터 기본 설치 경로가 `%LOCALAPPDATA%\Gyeonggi\VibeCodeHarness\github-pilot` 입니다(이전 스크립트는 상위 폴더 `…\VibeCodeHarness` 에 바로 풀었습니다). 설치 스크립트는 옛 위치에 `gg.cmd` 가 있으면 `gg.cmd.superseded-<번호>` 로 이름을 바꾸고 경고를 띄웁니다 — 두 벌이 공존해 옛 런처가 계속 쓰이는 일을 막기 위해서입니다. 다음을 손으로 마무리하세요.
+
+1. 사용자 PATH 에 `…\Gyeonggi\VibeCodeHarness` 가 등록돼 있으면 `…\VibeCodeHarness\github-pilot` 으로 바꿉니다(`-AddToUserPath` 로 다시 설치하면 새 경로가 추가됩니다).
+2. 옛 폴더의 `bin\`, `lib\`, `shared\` 는 더 이상 쓰이지 않습니다. 확인 후 지워도 됩니다(설치 영수증 `.vibecode-harness-install.json` 의 `retired_legacy_launcher` 에 바꾼 파일이 적혀 있습니다).
+3. 기존 프로젝트는 새 설치본으로 `gg update --project <폴더>` 를 한 번 실행합니다 — 0.3.0 은 lock 지문 전수 검사와 훅 등록 검사를 하므로, 이것 없이 `gg verify` 를 돌리면 "lock 이 구버전입니다" 로 막힙니다.
+
 ### PowerShell이 `install.ps1` 실행을 막습니다
 
 다운로드한 파일의 차단 표시를 해제한 뒤 다시 실행합니다.
