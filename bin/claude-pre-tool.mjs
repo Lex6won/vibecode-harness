@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { isDirectPackageInstall, languageFailureForPath, resolvePolicyProfile, runtimeFailureForCommand } from "../lib/policy-engine.mjs";
+import { isDirectPackageInstall, languageFailureForPath, protectedPathCommandFailure, protectedPathFailure, resolvePolicyProfile, runtimeFailureForCommand } from "../lib/policy-engine.mjs";
 
 function block(message) {
   process.stderr.write(`바이브코드 하네스 차단: ${message}\n`);
@@ -13,15 +13,22 @@ if (!raw.trim()) process.exit(0);
 try {
   const event = JSON.parse(raw);
   const input = event.tool_input || event.toolInput || {};
-  const filePath = String(input.file_path || input.path || input.file || "");
+  // Write·Edit·MultiEdit 은 file_path, NotebookEdit 은 notebook_path 를 쓴다(47차: NotebookEdit 추가).
+  const filePath = String(input.file_path || input.notebook_path || input.path || input.file || "");
   const profile = resolvePolicyProfile({ filePath, cwd: event.cwd });
-  const languageFailure = languageFailureForPath(profile, filePath);
+  // 보호 파일(정책·훅·lock)은 언어와 무관하게 먼저 막는다 — 집행 파일을 집행 대상이 고치면 집행이 아니다.
+  const protectedFailure = protectedPathFailure(filePath);
+  const languageFailure = protectedFailure || languageFailureForPath(profile, filePath);
   if (languageFailure) {
     block(languageFailure);
   } else {
+    // Bash 와 PowerShell 도구 모두 command 필드를 쓴다(47차: PowerShell 도구 추가).
     const command = String(input.command || "").replace(/\\/g, "/").toLowerCase();
     const runtimeFailure = runtimeFailureForCommand(profile, command);
-    if (runtimeFailure) {
+    const protectedCommandFailure = protectedPathCommandFailure(String(input.command || ""));
+    if (protectedCommandFailure) {
+      block(protectedCommandFailure);
+    } else if (runtimeFailure) {
       block(runtimeFailure);
     } else if (isDirectPackageInstall(command)) {
       block("새 패키지는 직접 설치하지 않습니다. 먼저 gg package check로 체커 검토와 기관 패키지 정책을 확인하세요.");

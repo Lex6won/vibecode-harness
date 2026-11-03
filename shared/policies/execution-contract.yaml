@@ -30,10 +30,10 @@ execution_contract:
 
   checker_invocation:
     rule: "MCP may be used during development as advice. Git hooks and CI use the documented gvskb CLI contract in shared/policies/checker-contract.yaml."
-    machine_verdict_contract: "pending_upstream_machine_verdict"
-    current_behavior: "Run the CLI for raw evidence. A documented --fail-on block exit code may stop a commit only after evidence-completeness checks. Never reconstruct a final checker verdict from summary.blocked, severity, HTML, or Markdown."
-    incomplete_rule: "An empty scan, profile_fallback, file-limit truncation, missing dependency evidence, or stale required intelligence ends as checker_incomplete."
-    release_rule: "Release remains checker_review_required until the external checker publishes a stable machine-verdict field."
+    machine_verdict_contract: "gate_v1 (checker >= 0.6.0; was pending_upstream_machine_verdict before 2026-11-03)"
+    current_behavior: "Run the CLI (>= 0.6.0, default local dependency audit) for evidence. Read gate.verdict and map it with checker-contract.yaml harness_status_by_verdict; the exit code is a cross-check. Never reconstruct a final checker verdict from summary.blocked, severity, HTML, or Markdown."
+    incomplete_rule: "An empty scan, profile_fallback, file-limit truncation, missing dependency evidence, missing intelligence (gate.intel_gap=missing / verdict undetermined), or a checker below the minimum version ends as checker_incomplete."
+    release_rule: "Release remains checker_review_required. The machine verdict is preserved as evidence; approval happens only in the portal's human review."
 
   enforcement_points:
     codex:

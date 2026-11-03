@@ -1,6 +1,9 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
-  [string]$InstallDir = (Join-Path $env:LOCALAPPDATA "Gyeonggi\\VibeCodeHarness"),
+  # README·docs/18 이 안내하는 경로와 같아야 한다 - 두 문서는 github-pilot 하위 폴더를 가리킨다.
+  [string]$InstallDir = (Join-Path $env:LOCALAPPDATA "Gyeonggi\VibeCodeHarness\github-pilot"),
+  # 없을 때 winget 으로 Node.js LTS·Python 설치를 시도한다(설치 창 승인은 사용자). 스위치가 없으면 안내만 하고 멈춘다.
+  [switch]$InstallPrerequisites,
   [switch]$SkipChecker,
   [switch]$AllowGitHubPilotSource,
   [switch]$AddToUserPath
@@ -50,16 +53,31 @@ function Find-Python {
   return $python
 }
 
+function Invoke-WingetInstall {
+  param([string]$PackageId)
+  $winget = Find-CommandPath "winget"
+  if ($null -eq $winget) { return $false }
+  Write-Host "Installing $PackageId with winget (approve the Windows prompt if one appears)..."
+  & $winget install --id $PackageId --exact --source winget --accept-package-agreements --accept-source-agreements --scope user
+  return ($LASTEXITCODE -eq 0)
+}
+
 function InstallPrerequisites {
   $node = Find-Node
+  if ($null -eq $node -and $InstallPrerequisites) {
+    if (Invoke-WingetInstall "OpenJS.NodeJS.LTS") { $node = Find-Node }
+  }
   if ($null -eq $node) {
-    Stop-Install "Node.js 22 or later is required. Install it with: winget install OpenJS.NodeJS.LTS"
+    Stop-Install "Node.js 22 or later is required. Install it with: winget install OpenJS.NodeJS.LTS (or re-run with -InstallPrerequisites)"
   }
 
   if (-not $SkipChecker) {
     $python = Find-Python
+    if ($null -eq $python -and $InstallPrerequisites) {
+      if (Invoke-WingetInstall "Python.Python.3.13") { $python = Find-Python }
+    }
     if ($null -eq $python) {
-      Stop-Install "Python is required for the legacy local checker path. Install it with: winget install Python.Python.3.13"
+      Stop-Install "Python is required for the local checker path. Install it with: winget install Python.Python.3.13 (or re-run with -InstallPrerequisites)"
     }
   }
 

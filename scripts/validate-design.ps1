@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$Root = (Split-Path -Parent $PSScriptRoot)
 )
 
@@ -120,10 +120,12 @@ foreach ($adapter in @(@{ name = "Codex adapter"; text = $codex }, @{ name = "Cl
   if ($marker.command -ne "gg verify") { throw "$($adapter.name) verify command drifted: $($marker.command)" }
 }
 
-foreach ($marker in @("checker_invocation:", "pending_upstream_machine_verdict", "profile_fallback", "checker_incomplete", "checker_review_required")) {
+foreach ($marker in @("checker_invocation:", "gate_v1", "profile_fallback", "checker_incomplete", "checker_review_required")) {
   if ($execution -notmatch [regex]::Escape($marker)) { throw "Execution contract is missing: $marker" }
 }
-foreach ($marker in @("--check-deps", "--include-installed", "public-default-strict", "pending_upstream_machine_verdict", "prohibited_inference_sources")) {
+# 47차: `--check-deps` 는 금지 표식이다(0.6 에서 online 별칭). 계약에 다시 들어오면 실패한다.
+if ($checkerContract -match 'required_arguments:.*--check-deps') { throw "Checker contract reintroduced --check-deps in required_arguments (alias of --deps online since checker 0.6)" }
+foreach ($marker in @("--include-installed", "public-default-strict", "harness_status_by_verdict", "undetermined: undetermined", "min_engine_version", "prohibited_inference_sources")) {
   if ($checkerContract -notmatch [regex]::Escape($marker)) { throw "Checker contract is missing: $marker" }
 }
 foreach ($marker in @("kev_checked", "version_exact", "source_scope", "registry_status")) {

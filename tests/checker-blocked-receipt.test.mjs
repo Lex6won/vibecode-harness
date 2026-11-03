@@ -65,6 +65,8 @@ async function makeProject(env) {
   await writeFile(join(project, "scan"),
     "process.stdout.write(process.env.GG_TEST_CHECKER_REPORT + '\\n');\n"
     + "process.exitCode = Number(process.env.GG_TEST_CHECKER_EXIT || 0);\n");
+  // 47차 — 검사 전에 `status --json` 으로 버전·위협정보 상태를 묻는다.
+  await writeFile(join(project, "status"), "process.stdout.write(JSON.stringify({ version: process.env.GG_TEST_CHECKER_VERSION || '0.6.1', intel: { state: 'ok' } }) + '\\n');\n");
   return project;
 }
 

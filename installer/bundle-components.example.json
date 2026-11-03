@@ -1,4 +1,4 @@
 {
-  "harness": { "path": "bin/gg.mjs", "version": "0.2.0" },
+  "harness": { "path": "bin/gg.mjs", "version": "0.3.0" },
   "node_runtime": { "path": "runtime/node.exe", "version": "22.0.0" }
 }
