@@ -1,6 +1,6 @@
 ; 기관 배포 관리자가 Inno Setup 6에서 컴파일하는 per-user 설치기 템플릿입니다.
 ; 실제 배포 전에는 SignTool, timestamp URL, BundlePath를 기관 값으로 전달해야 합니다.
-#define AppVersion "0.2.0"
+#define AppVersion "0.3.0"
 #ifdef TestBuild
   #define AppName "Gyeonggi VibeCode Harness Test Build"
   #define AppId "{{8A4A22CD-C161-4082-8EA4-18C5D2CB3EF5}"

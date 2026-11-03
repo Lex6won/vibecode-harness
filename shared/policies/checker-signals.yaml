@@ -11,10 +11,15 @@ checker_signal_policy:
     unchecked_or_unparsed: "안전이 아니라 conditional 또는 undetermined로 기록한다."
 
   machine_verdict_boundary:
-    current_state: "현재 gvskb CLI JSON에는 하네스가 의존할 안정적인 최종 판정 필드가 없다."
-    rule: "하네스는 raw finding, severity, summary.blocked, 종료 코드, HTML 또는 Markdown으로 체커의 최종 판정을 재구성하지 않는다."
-    temporary_behavior: "빈 스캔·프로파일 fallback·필수 의존성 증적 누락은 불완전 검사로 중단한다. 그 밖의 최종 보안 판정은 체커의 공식 기계 계약이 준비될 때까지 사람 검토로 남긴다."
-    future_mapping: "공식 계약이 문서화된 뒤에만 해당 필드의 의미와 종료 코드를 별도 승인 변경으로 연결한다."
+    current_state: "gvskb 0.5.4 부터 `gate.verdict`(approved|conditional|blocked|undetermined)가 공식 기계 판정이고, 0.6.1 은 `gate_contract` 로 표·종료코드·필드를 함께 내보낸다(checker-contract.yaml v1.2)."
+    rule: "하네스는 raw finding, severity, summary.blocked, HTML 또는 Markdown으로 체커의 최종 판정을 재구성하지 않는다. `gate.verdict` 를 그대로 옮겨 적고 종료 코드는 교차 확인에만 쓴다."
+    status_mapping: "approved·conditional → review_required, blocked → blocked, undetermined → undetermined(검사 못 함, 차단 아님). 모르는 값은 undetermined."
+    incomplete_behavior: "빈 스캔·프로파일 fallback·필수 의존성 증적 누락·위협정보 없음(intel_gap=missing)은 불완전 검사(41)로 중단한다."
+    approval_boundary: "어느 판정도 하네스에서 승인으로 바뀌지 않는다 — final_verdict 는 언제나 review_required 이고 승인은 포털의 사람 검토에서만 이뤄진다."
+    intel_signals:
+      intel_gap_missing: "패키지 검사가 수행되지 않은 것이다. 통과가 아니라 판정 불가로 기록하고 위협정보 반입을 안내한다."
+      intel_gap_stale: "조건부다. checker_conditional_criteria 에 intel_stale 로 남기고 사람 검토로 보낸다."
+      dependency_check_mode: "local(기본·네트워크 0) · online · off 를 영수증(checker_dependency_check.mode)에 남긴다. off 는 기관 설정 없이는 나오지 않는다."
 
   enforcement_mode:
     default: "MONITOR"

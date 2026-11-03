@@ -133,9 +133,13 @@ test("malformed gate fields degrade to the unknown shape instead of leaking", ()
 test("checkerGateEvidence tolerates a missing report entirely", () => {
   assert.deepEqual(checkerGateEvidence(null), {
     checker_schema_version: null,
+    checker_version: null,
     checker_gate_verdict: null,
     checker_gate_reason: "",
-    checker_block_reasons: []
+    checker_block_reasons: [],
+    checker_conditional_criteria: [],
+    checker_intel_gap: null,
+    checker_dependency_check: null
   });
 });
 

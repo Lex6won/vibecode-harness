@@ -45,8 +45,18 @@ security:
       citizen_chatbot: "civil-complaint-chatbot"
       default: "public-default-strict"
     scope: "entire project source and declared plus installed dependencies"
-    dependency_audit: "--check-deps --include-installed"
+    # 체커 0.6 부터 패키지 검사는 기본(local, 네트워크 0)이다. 예전 `--check-deps` 는 `--deps online` 별칭이라
+    # 붙이지 않는다. 외부 조회가 필요한 기관은 아래 checker_env 의 GVSKB_DEPS_MODE 로 정한다.
+    dependency_audit: "default local intel check (checker >= 0.6.0) --include-installed"
     environment_grade: "E1 for local repeated use; E2 for CI or internal server"
+  min_checker_version: "0.6.0"
+  # 체커에 강제로 넘길 환경변수. GVSKB_ · PYTHON 으로 시작하는 키만 읽는다(gg.mjs parseCheckerEnvBlock).
+  # 이 사본은 lock 지문으로 보호되므로 프로젝트 안에서 바뀌지 않는다. 폐쇄망 기관 예:
+  #   checker_env:
+  #     GVSKB_MODE: offline
+  #     GVSKB_INTEL_REQUIRE_SIGNATURE: "1"
+  #     GVSKB_INTEL_DIR: "\\\\fileserver\\gvskb-intel"
+  checker_env: {}
 
 design_defaults:
   visual_prototype: "HTML prototype first; Figma is optional"

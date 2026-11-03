@@ -1,12 +1,15 @@
 checker_contract:
-  version: "1.1"
+  version: "1.2"
   engine: "vibecode-checker (gvskb)"
+  min_engine_version: "0.6.0"
   ownership: "The checker is an external engine. This harness must not change, patch, or recreate its verdict logic."
+  source_of_truth: "gvskb status --json -> gate_contract (checker >= 0.6.1). The tables below mirror it; the checker repository tests compare them."
 
   invocation:
     git_hook_and_ci: "cli_only"
     ai_tool_development: "mcp_optional_advisory"
     reason: "Git and CI invoke the documented gvskb CLI. MCP use is advisory during AI-assisted development."
+    version_gate: "Run `gvskb status --json` first. Below min_engine_version the dependency audit is opt-in (--check-deps) and a default invocation silently skips packages; the harness ends as checker_incomplete instead of scanning."
 
   valid_profiles:
     - public-default-strict
@@ -15,33 +18,62 @@ checker_contract:
     - civil-complaint-chatbot
   profile_rule: "Never use a non-existent profile. profile_fallback is an incomplete result, never a pass."
 
+  dependency_audit:
+    default: "Since 0.6.0 the dependency audit runs by default in `local` mode (local intel cache only, zero network)."
+    deprecated_flag: "`--check-deps` is now an alias of `--deps online` (external OSV/registry lookup). The harness does not pass it."
+    mode_control: "The harness never passes --deps. Institutions set GVSKB_DEPS_MODE through institution-profile.yaml `security.checker_env`."
+    closed_network: "Set GVSKB_MODE=offline and GVSKB_INTEL_REQUIRE_SIGNATURE=1 in checker_env; import the signed intel bundle via GVSKB_INTEL_DIR."
+
   scan_plans:
     quick:
       meaning: "A harness-defined limited scope for rapid feedback; it is not a checker profile or a release decision."
       checker_profile: "public-default-strict"
-      required_arguments: ["--format", "json", "--check-deps", "--fail-on", "never"]
+      required_arguments: ["--format", "json", "--fail-on", "block"]
       limitation: "Excluded files and scope are recorded as evidence. A quick scan never replaces a standard scan."
     standard:
       meaning: "Full project source and declared/installed dependency evidence before commit or release."
-      required_arguments: ["--format", "json", "--check-deps", "--include-installed", "--env", "{env_grade}", "--fail-on", "never"]
+      required_arguments: ["--format", "json", "--include-installed", "--env", "{env_grade}", "--fail-on", "block"]
       profile_source: "institution-profile.yaml standard_scan checker_profile_by_network_profile"
-      limitation: "File-limit truncation, missing dependencies, or stale intelligence are never silently treated as safe."
+      limitation: "File-limit truncation, missing dependencies, or missing/stale intelligence are never silently treated as safe."
 
   machine_verdict_contract:
-    status: "pending_upstream_machine_verdict"
-    current_cli_fact: "Current gvskb scan JSON does not publish a stable top-level gate_status or verdict field."
+    status: "published"
+    published_since: "checker 0.5.4 (gate.verdict), 0.6.0 (gate.intel_gap, dependency_check), 0.6.1 (gate_contract)"
+    read_fields: ["gate.verdict", "gate.reason", "gate.block_reasons", "gate.conditional_criteria", "gate.intel_gap", "dependency_check.mode", "dependency_check.intel.state", "schema_version", "engine_version"]
+    verdicts: ["approved", "conditional", "blocked", "undetermined"]
+    exit_codes:
+      approved: 0
+      conditional: 1
+      blocked: 2
+      undetermined: 3
+      note: "With --fail-on block (harness default) conditional exits 0. Exit codes are a cross-check only; the verdict field decides."
+    harness_status_by_verdict:
+      approved: review_required
+      conditional: review_required
+      blocked: blocked
+      undetermined: undetermined
+    harness_exit_by_status:
+      review_required: 0
+      blocked: 40
+      undetermined: 41
+    rules:
+      - "blocked wins over any harness-side incompleteness reason; never downgrade blocked to incomplete."
+      - "undetermined means 'could not check' — it is neither blocked nor approved. Exit code 3 is not recorded as a block."
+      - "An unknown verdict value is treated as undetermined, never as a pass."
+      - "If exit code and verdict disagree, record checker_status_conflict and keep the worse status."
+      - "The harness never approves. final_verdict is always review_required; approval happens only in the portal's human review."
     harness_rule: "Do not infer an approved, blocked, or conditional checker result by recombining raw fields."
     prohibited_inference_sources: ["summary.blocked", "finding severity alone", "rendered HTML", "rendered Markdown"]
-    documented_cli_signal: "The documented gvskb --fail-on block exit code may stop a commit only with complete raw evidence. It is not used to claim release approval or reconstruct conditional verdicts."
-    required_future_fields: ["gate_status.verdict", "gate_status.blocked", "gate_status.incomplete_reasons"]
-    implementation_effect: "Until the checker publishes a documented machine-verdict contract, gg verify may retain raw evidence but must end final checker approval as pending/review-required."
+    implementation: "lib/checker-evidence.mjs CHECKER_STATUS_BY_VERDICT · EXIT_CODE_TO_VERDICT · resolveCheckerStatus"
 
   raw_evidence_contract:
-    required_json_fields: ["scanned_files", "findings", "profile_fallback"]
-    dependency_evidence: "--check-deps is mandatory. --include-installed is mandatory for standard scans."
+    required_json_fields: ["scanned_files", "findings", "profile_fallback", "gate"]
+    dependency_evidence: "The default dependency audit is mandatory (no --deps off). --include-installed is mandatory for standard scans. dependency_check is recorded in the receipt."
     empty_scan_rule: "An empty scanned_files array is incomplete and must not pass."
+    intel_rule: "gate.intel_gap=missing ends as undetermined (41) with the remediation hint; intel_gap=stale stays conditional (review_required) and is preserved in checker_conditional_criteria."
     report_rule: "Do not copy, rename, or store report contents. Record only local path, SHA-256, and generated time."
 
   dependency_rule:
     package_gate: "Before installing a package, invoke the approved package gate or checker package review path."
-    vendor_bundles: "--check-deps automatically audits discovered vendor bundles; scan-vendor-bundles is not a CLI command."
+    package_check_classification: "check-package exits 1 for both 'vulnerable' and 'unchecked'. Classify by JSON: checked=false -> incomplete(41); malicious/registry_rejected/not_found/in_kev or vulnerability_count>0 -> blocked(20); requires_review -> review_required; else passed."
+    vendor_bundles: "The default dependency audit also audits discovered vendor bundles; scan-vendor-bundles is not a CLI command."
