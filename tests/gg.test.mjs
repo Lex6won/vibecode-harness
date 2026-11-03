@@ -31,7 +31,8 @@ function runCommand(command, args, cwd) {
   });
 }
 
-async function fakeCheckerEnvironment(report = { scanned_files: ["app.ts"], skipped_files: [], profile: "web-civil-service", summary: { finding_count: 0 } }) {
+// 0.6 이상 체커의 결과에는 gate 가 있어야 한다(없으면 incomplete, 47차 M3) — 기본 보고서에 approved gate 를 둔다.
+async function fakeCheckerEnvironment(report = { scanned_files: ["app.ts"], skipped_files: [], profile: "web-civil-service", summary: { finding_count: 0 }, gate: { verdict: "approved", reason: "", block_reasons: [], conditional_criteria: [], intel_gap: "" } }) {
   const directory = await mkdtemp(join(tmpdir(), "vibecode-harness-fake-gvskb-"));
   const scripts = join(directory, "Python", "Python313", "Scripts");
   await mkdir(scripts, { recursive: true });
@@ -43,8 +44,12 @@ async function fakeCheckerEnvironment(report = { scanned_files: ["app.ts"], skip
   };
 }
 
+// 가짜 체커는 node 가 하위 명령 이름의 파일을 실행하는 구조다. 47차부터 하네스가 검사 전에
+// `status --json` 으로 버전·위협정보 상태를 묻고 실패하면 `version` 으로 폴백하므로 둘 다 둔다.
 async function writeFakeChecker(project) {
   await writeFile(join(project, "scan"), "process.stdout.write(process.env.GG_TEST_CHECKER_REPORT + '\\n');\n");
+  await writeFile(join(project, "status"), "process.stdout.write(JSON.stringify({ version: process.env.GG_TEST_CHECKER_VERSION || '0.6.1', intel: { state: 'ok', as_of: '2026-11-03T00:00:00+00:00', age_days: 0, max_age_days: 2, missing: [], stale: [], signature: { required: false, trusted_keys: 1 } }, install_identity: { commit_id: 'fake' } }) + '\\n');\n");
+  await writeFile(join(project, "version"), "process.stdout.write('vibecode-checker (gvskb) ' + (process.env.GG_TEST_CHECKER_VERSION || '0.6.1') + '\\n');\n");
 }
 
 async function removeTemporaryDirectory(directory) {

@@ -18,7 +18,7 @@ function run(args = []) {
 }
 
 test("release preflight accepts the matching release tag and leaves publishing manual", async () => {
-  const result = await run(["--tag", "v0.2.0"]);
+  const result = await run(["--tag", "v0.3.0"]);
   assert.equal(result.code, 0, result.stdout + result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.status, "source_preflight_passed");
@@ -33,7 +33,7 @@ test("release preflight rejects a tag that does not match the package version", 
 });
 
 test("demonstration preflight only accepts an explicitly labelled demonstration tag", async () => {
-  const result = await run(["--tag", "v0.2.0-demo.1", "--channel", "demonstration"]);
+  const result = await run(["--tag", "v0.3.0-demo.1", "--channel", "demonstration"]);
   assert.equal(result.code, 0, result.stdout + result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.status, "demonstration_source_preflight_passed");

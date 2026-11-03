@@ -69,13 +69,23 @@ test("doctor discovers a checker installed in the per-user Python Scripts direct
     const scripts = join(root, "Python", "Python313", "Scripts");
     await mkdir(scripts, { recursive: true });
     await copyFile(process.execPath, join(scripts, "gvskb.exe"));
+    // 47차 — doctor 가 `status --json`·`version` 으로 버전·위협정보를 묻는다. 가짜 체커(node)가 프로젝트 폴더의
+    // 같은 이름 파일을 실행하므로 둘을 둔다.
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(root, "status"), "process.stdout.write(JSON.stringify({ version: '0.6.1', intel: { state: 'ok', as_of: '2026-11-03T00:00:00+00:00', age_days: 0, max_age_days: 2, missing: [], stale: [], signature: { required: true, trusted_keys: 1 } } }) + '\\n');\n");
+    await writeFile(join(root, "version"), "process.stdout.write('vibecode-checker (gvskb) 0.6.1\\n');\n");
     const result = await run(process.execPath, [gg, "doctor", "--project", root], {
       env: { ...process.env, APPDATA: root }
     });
     assert.notEqual(result.code, 70, result.stdout + result.stderr);
-    assert.match(result.stdout, /python_user_scripts/);
+    const report = JSON.parse(result.stdout.slice(result.stdout.indexOf("{")));
+    assert.equal(report.checker.source, "python_user_scripts");
+    assert.equal(report.checker.status, "available");
+    assert.equal(report.checker.version, "0.6.1");
+    assert.equal(report.checker.intel.state, "ok");
   } finally {
-    await rm(root, { recursive: true, force: true });
+    // M8 — doctor 가 띄운 체커 프로세스의 핸들이 늦게 풀려 EBUSY 가 나던 자리. 재시도로 정리한다.
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
   }
 });
 

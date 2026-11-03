@@ -2,7 +2,7 @@
 
 ## 사용자 경험 목표
 
-공식 Windows 설치본은 Node.js, Python, `vibecode-checker`, `gg.cmd`를 함께 포함한다. 사용자는 서명된 EXE를 설치한 뒤 시작 메뉴의 **VibeCode Harness 프로젝트 시작**을 선택하거나 `gg init --interactive`를 실행한다. 이 흐름에서 사용자가 정할 것은 프로젝트 폴더, 사용할 AI 도구, 개발 유형, 점검 수준뿐이다.
+공식 Windows 설치본은 Node.js(하네스 실행용)와 `gg.cmd`를 포함한다. Python 과 `vibecode-checker`는 사용자 EXE 에 넣지 않는다(`scripts/build-windows-installer.ps1`, docs/23) — 최종 보안 점검은 포털 서버 체커가 하고, 개발 PC 의 `--local-checker` 는 별도 설치한 체커(0.6.0 이상)를 쓴다. 사용자는 서명된 EXE를 설치한 뒤 시작 메뉴의 **VibeCode Harness 프로젝트 시작**을 선택하거나 `gg init --interactive`를 실행한다. 이 흐름에서 사용자가 정할 것은 프로젝트 폴더, 사용할 AI 도구, 개발 유형, 점검 수준뿐이다.
 
 Codex와 Claude Code 자체의 설치와 계정 로그인은 각 제품의 라이선스·조직 정책에 속하므로 하네스가 대신 설치하거나 로그인하지 않는다. 하네스는 선택된 도구가 아직 없으면 “구성 적용됨 / 도구 설치 필요”로 안내한다.
 
@@ -31,7 +31,7 @@ Codex는 프로젝트 지침을 적용하고, Claude Code는 지침에 더해 �
 GitHub의 `main` 변경은 개발 소스 변경일 뿐이며 사용자 PC를 바꾸지 않는다. EXE는 다음 조건을 모두 충족하는 승인 릴리스에서만 만든다.
 
 1. 고정된 Git 태그와 커밋에서 테스트를 통과한다.
-2. Node, Python, 체커, 하네스, `gg.cmd`를 번들에 넣는다.
+2. Node, 하네스, `gg.cmd`, Manager 를 번들에 넣는다(Python·체커는 제외).
 3. 번들 manifest를 기관 Ed25519 키로 서명하고 `gg bundle verify`로 검증한다.
 4. EXE를 Authenticode 코드서명하고 검증한다.
 5. 포털에 EXE URL, 버전, SHA-256, 코드서명 상태, 릴리스 노트를 함께 게시한다.
