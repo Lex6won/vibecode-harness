@@ -593,6 +593,13 @@ async function policyCheck(project, lock) {
   if (lock.policy_profile && lock.runtime_profile && lock.policy_profile !== policyProfileForRuntime(lock.runtime_profile)) {
     failures.push(`lock 의 policy_profile(${lock.policy_profile})이 runtime_profile(${lock.runtime_profile})과 맞지 않습니다. 트랙 변경은 gg migrate 로만 합니다.`);
   }
+  // 2차 리뷰 M4 — 하네스가 설치한 Git 훅(.githooks/pre-commit)이 있는데 core.hooksPath 가 풀렸으면 커밋 게이트가 꺼진 것이다.
+  if (await pathExists(join(project, ".git")) && await pathExists(join(project, ".githooks", "pre-commit"))) {
+    const hooksPath = await run("git", ["config", "--get", "core.hooksPath"], { cwd: project });
+    if (hooksPath.code !== null && hooksPath.stdout.trim() !== ".githooks") {
+      failures.push(`Git 훅 경로(core.hooksPath)가 .githooks 가 아닙니다(현재: ${hooksPath.stdout.trim() || "미설정"}). 하네스 pre-commit 이 실행되지 않습니다 — git config core.hooksPath .githooks 로 되돌리세요.`);
+    }
+  }
   const legacyPlugin = join(project, ".agents", "plugins", "vibecode-harness");
   if ((lock.retired_adapters_pending_cleanup || []).includes("google-antigravity") && await pathExists(legacyPlugin)) {
     failures.push("Retired Google Antigravity plugin remains in this project. Remove or independently review it before verification can continue.");
@@ -849,7 +856,15 @@ async function runChecker(project, lock, baseEnv = process.env) {
   // 계약 규칙 ① — **차단은 어떤 미완 사유보다 먼저다**(M2). 범위 결손·프로파일 fallback 이 있어도 차단을
   // '불완전'으로 낮추지 않는다. 근거는 먼저 남긴다 — 차단된 경우가 근거가 가장 필요한 경우다.
   if (evidence.checker_status === "blocked") {
-    const reportPath = await receipt();
+    // 2차 리뷰 L2 — 차단을 먼저 내되, 그 결과가 온전한 검사였는지도 영수증에 남긴다(검토자가 범위 결손을 봐야 한다).
+    const coverageReasons = [];
+    if (scannedFiles.length === 0) coverageReasons.push("scanned_files_empty");
+    if (report.profile_fallback) coverageReasons.push("profile_fallback");
+    if ((Array.isArray(report.skipped_files) ? report.skipped_files : []).some((item) => /max_files|최대 파일 수/i.test(String(item?.reason || "")))) coverageReasons.push("file_limit_truncated");
+    const blockedAudits = Array.isArray(report.dependency_audit?.audits) ? report.dependency_audit.audits : [];
+    if (declaredDependencies > 0 && blockedAudits.some((audit) => audit?.verdict === "unparsed" || audit?.requires_review === true && Number(audit?.parsed_count || 0) === 0)) coverageReasons.push("dependency_audit_unparsed");
+    if (evidence.checker_dependency_check?.mode === "off") coverageReasons.push("dependency_check_off");
+    const reportPath = await writeReceipt(project, "checker-evidence", { ...evidence, checker_env: checkerEnv, checker_status_source: info.source, coverage_incomplete_reasons: coverageReasons });
     return { status: "blocked", reason: evidence.checker_gate_verdict === "blocked" ? `체커 판정 차단 — ${evidence.checker_gate_reason || "차단 근거는 영수증 참조"}` : "체커가 공식 차단 종료 코드를 반환했습니다.", exit_code: result.code, reportPath, ...common, stderr: result.stderr.slice(-2000) };
   }
   // 차단이 아니면 검사가 온전했는지 본다 — 온전하지 않은 결과는 근거가 되지 못하므로 영수증을 남기지 않는다.
