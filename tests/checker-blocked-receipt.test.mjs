@@ -194,7 +194,7 @@ test("approved: 체커가 승인해도 하네스의 final_verdict 는 review_req
 // 4. 구버전 체커 — 없는 것을 통과로 바꿔 말하지 않는다
 // ---------------------------------------------------------------------------
 
-test("gate 가 없는 구버전 결과는 null 로 남고 approved 로 추론되지 않는다", async () => {
+test("gate 가 없는 결과는 null 로 남고 approved 로 추론되지 않는다 — 0.6 이상 체커라면 incomplete 다(M3)", async () => {
   const context = await verifyWith({
     scanned_files: ["app.ts"],
     skipped_files: [],
@@ -202,14 +202,18 @@ test("gate 가 없는 구버전 결과는 null 로 남고 approved 로 추론되
     summary: { finding_count: 0 }
   }, 0);
   try {
-    const { receipt } = context;
-    assert.ok(receipt);
+    const { receipt, run } = context;
+    assert.ok(receipt, "무엇을 돌려줬는지는 영수증으로 남긴다");
     assert.equal(receipt.checker_gate_verdict, null);
     assert.notEqual(receipt.checker_gate_verdict, "approved");
     assert.equal(receipt.checker_gate_reason, "");
     assert.deepEqual(receipt.checker_block_reasons, []);
     assert.equal(receipt.checker_schema_version, null);
     assert.equal(receipt.final_verdict, "review_required");
+    const printed = JSON.parse(run.stdout.slice(run.stdout.indexOf("{")));
+    assert.equal(printed.status, "incomplete", "버전 ≥0.6 인데 gate 가 없으면 통과가 아니다");
+    assert.match(printed.checker.reason, /gate\.verdict/);
+    assert.equal(run.code, 41);
   } finally {
     await cleanup(context);
   }
@@ -219,15 +223,32 @@ test("gate 가 없는 구버전 결과는 null 로 남고 approved 로 추론되
 // 완전성 검사를 통과하지 못한 결과까지 영수증으로 남기지는 않는다
 // ---------------------------------------------------------------------------
 
-test("검사 범위를 신뢰할 수 없으면 영수증을 남기지 않고 incomplete 로 끝난다", async () => {
+test("검사 범위를 신뢰할 수 없으면(차단이 아닐 때) 영수증을 남기지 않고 incomplete 로 끝난다", async () => {
   // 근거를 남기는 것과 근거가 되지 못하는 결과를 기록하는 것은 다르다.
-  const context = await verifyWith(reportWith({ verdict: "blocked", reason: "r", block_reasons: [] }, {
+  const context = await verifyWith(reportWith({ verdict: "conditional", reason: "r", block_reasons: [] }, {
     profile_fallback: "web-civil-service"
-  }), 1);
+  }), 0);
   try {
     assert.equal(context.receipt, null, "프로필 fallback 결과를 근거로 남기지 않는다");
     const printed = JSON.parse(context.run.stdout.slice(context.run.stdout.indexOf("{")));
     assert.equal(printed.status, "incomplete");
+  } finally {
+    await cleanup(context);
+  }
+});
+
+test("차단은 프로파일 fallback 같은 미완 사유보다 먼저다 — 영수증을 남기고 40 으로 끝난다(계약 규칙 ①)", async () => {
+  // 47차 리뷰 M2: 예전에는 완전성 검사가 먼저 return 해 verdict=blocked 가 41 로 내려갔다.
+  const context = await verifyWith(reportWith({ verdict: "blocked", reason: "KEV", block_reasons: [{ package: "kevpkg" }] }, {
+    profile_fallback: "web-civil-service"
+  }), 2);
+  try {
+    assert.ok(context.receipt, "차단 근거는 남긴다");
+    assert.equal(context.receipt.checker_status, "blocked");
+    assert.equal(context.receipt.profile_fallback, true);
+    const printed = JSON.parse(context.run.stdout.slice(context.run.stdout.indexOf("{")));
+    assert.equal(printed.status, "blocked");
+    assert.equal(context.run.code, EXIT_CHECKER_BLOCK);
   } finally {
     await cleanup(context);
   }

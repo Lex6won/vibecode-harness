@@ -150,9 +150,24 @@ function Write-InstallReceipt {
   [System.IO.File]::WriteAllText($receiptPath, $json, [System.Text.UTF8Encoding]::new($false))
 }
 
+function Retire-LegacyInstall {
+  # M7: 예전 기본 경로(…\VibeCodeHarness)에 설치본이 있으면 새 기본 경로(…\github-pilot)와 두 벌이 공존하고,
+  # PATH 에 등록된 옛 gg.cmd 가 계속 쓰인다. 옛 런처를 비활성 이름으로 옮기고 사용자에게 알린다(삭제하지 않는다).
+  param([string]$Destination)
+  $legacyRoot = Split-Path -Parent $Destination
+  if ((Split-Path -Leaf $Destination) -ne "github-pilot") { return $null }
+  $legacyLauncher = Join-Path $legacyRoot "gg.cmd"
+  if (-not (Test-Path -LiteralPath $legacyLauncher)) { return $null }
+  $retired = "$legacyLauncher.superseded-$PID"
+  Rename-Item -LiteralPath $legacyLauncher -NewName (Split-Path -Leaf $retired)
+  Write-Warning "Previous harness launcher found at $legacyLauncher. It was renamed to $retired so that only the new installation ($Destination) is used. If $legacyRoot is on your PATH, replace it with $Destination (see README: 이전 설치 정리)."
+  return $retired
+}
+
 try {
   $node = InstallPrerequisites
   $source = Get-HarnessSource
+  $retiredLauncher = Retire-LegacyInstall -Destination $InstallDir
   $backup = Copy-HarnessToInstallDir -Source $source -Destination $InstallDir
 
   $wrapper = Join-Path $InstallDir "gg.cmd"
@@ -166,6 +181,12 @@ try {
     $receiptPath = Join-Path $InstallDir ".vibecode-harness-install.json"
     $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
     $receipt | Add-Member -NotePropertyName "previous_install_backup" -NotePropertyValue $backup
+    [System.IO.File]::WriteAllText($receiptPath, ($receipt | ConvertTo-Json -Depth 4), [System.Text.UTF8Encoding]::new($false))
+  }
+  if ($retiredLauncher) {
+    $receiptPath = Join-Path $InstallDir ".vibecode-harness-install.json"
+    $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+    $receipt | Add-Member -NotePropertyName "retired_legacy_launcher" -NotePropertyValue $retiredLauncher
     [System.IO.File]::WriteAllText($receiptPath, ($receipt | ConvertTo-Json -Depth 4), [System.Text.UTF8Encoding]::new($false))
   }
 

@@ -116,6 +116,23 @@ function ensureClaudeHook(settings) {
     settings.hooks.PreToolUse.push({ matcher: CLAUDE_HOOK_MATCHER, hooks: [claudeHookEntry()] });
     return { status: "added", replaced: 0 };
   }
+  // M10 — 우리 훅은 **한 항목에 한 번**만 남긴다. 옛 등록이 둘이었거나 혼합 항목에서 분리된 뒤 현행 항목이
+  // 이미 있으면 두 번 실행된다. 첫 현행 항목을 남기고 나머지 항목에서는 우리 훅을 뺀다(빈 항목은 지운다).
+  let kept = false;
+  settings.hooks.PreToolUse = settings.hooks.PreToolUse.filter((entry) => {
+    if (!Array.isArray(entry.hooks)) return true;
+    const ours = entry.hooks.filter(isVibecodeClaudeHook);
+    if (!ours.length) return true;
+    if (!kept && isCurrentClaudeHookEntry(entry)) {
+      if (ours.length > 1) { entry.hooks = [...entry.hooks.filter((hook) => !isVibecodeClaudeHook(hook)), ours[0]]; replaced += 1; }
+      kept = true;
+      return true;
+    }
+    entry.hooks = entry.hooks.filter((hook) => !isVibecodeClaudeHook(hook));
+    replaced += 1;
+    return entry.hooks.length > 0;
+  });
+  if (!kept) { settings.hooks.PreToolUse.push({ matcher: CLAUDE_HOOK_MATCHER, hooks: [claudeHookEntry()] }); replaced += 1; }
   return { status: replaced ? "migrated" : "already_configured", replaced };
 }
 
@@ -340,32 +357,57 @@ async function runningBundleStatus() {
  * YAML 전체를 해석하지 않는다(의존성 0 원칙). `checker_env:` 아래 들여쓴 `KEY: value` 줄만 읽고,
  * 키는 `GVSKB_` 또는 `PYTHON` 으로 시작하는 것만 받는다 — 프로파일 파일로 PATH 를 바꾸는 길은 열지 않는다.
  */
+// 허용 키 — `GVSKB_*` 와 인코딩 둘뿐이다. 리뷰 지적(H4): `PYTHON*` 전체를 허용하면 공유받은 저장소의
+// 프로파일 사본이 PYTHONPATH·PYTHONSTARTUP 으로 체커 프로세스에 임의 코드를 넣을 수 있다.
+const CHECKER_ENV_ALLOWED_EXACT = new Set(["PYTHONUTF8", "PYTHONIOENCODING"]);
+function checkerEnvKeyAllowed(key) {
+  return /^GVSKB_[A-Z0-9_]+$/.test(key) || CHECKER_ENV_ALLOWED_EXACT.has(key);
+}
+
+/** 반환 `{ env, error }` — 인라인 맵(`checker_env: { … }`)처럼 못 읽는 형식은 조용히 비우지 않고 error 로 알린다(M6). */
 function parseCheckerEnvBlock(text) {
   const env = {};
   const lines = String(text || "").split(/\r?\n/);
-  const start = lines.findIndex((line) => /^\s*checker_env\s*:\s*(#.*)?$/.test(line));
-  if (start === -1) return env;
+  const start = lines.findIndex((line) => /^\s*checker_env\s*:/.test(line));
+  if (start === -1) return { env, error: null };
+  const inline = lines[start].replace(/^\s*checker_env\s*:/, "").replace(/#.*$/, "").trim();
+  if (inline && inline !== "{}") {
+    return { env, error: "institution-profile.yaml 의 checker_env 는 들여쓴 블록 형식(KEY: value 줄)만 지원합니다 — 인라인 맵 `{ … }` 은 읽지 않습니다." };
+  }
   const baseIndent = (lines[start].match(/^\s*/) || [""])[0].length;
+  const rejected = [];
   for (const line of lines.slice(start + 1)) {
     if (!line.trim() || /^\s*#/.test(line)) continue;
     const indent = (line.match(/^\s*/) || [""])[0].length;
     if (indent <= baseIndent) break;
-    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*?)\s*(?:#.*)?$/);
-    if (!match) continue;
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*?)\s*$/);
+    if (!match) return { env, error: `checker_env 줄을 읽을 수 없습니다: ${line.trim()}` };
     const [, key, rawValue] = match;
-    if (!/^(?:GVSKB_|PYTHON)/.test(key)) continue;
-    const value = rawValue.replace(/^(["'])(.*)\1$/, "$2");
-    if (value) env[key] = value;
+    if (!checkerEnvKeyAllowed(key)) { rejected.push(key); continue; }
+    let value;
+    try {
+      if (/^".*"$/.test(rawValue)) value = JSON.parse(rawValue);                 // 큰따옴표 — JSON 규칙으로 이스케이프 해제
+      else if (/^'.*'$/.test(rawValue)) value = rawValue.slice(1, -1);          // 작은따옴표 — 글자 그대로
+      else value = rawValue.replace(/\s+#.*$/, "");                             // 맨 값 — 뒤의 주석만 떼어낸다
+    } catch {
+      return { env, error: `checker_env 값을 읽을 수 없습니다: ${key}` };
+    }
+    if (value) env[key] = String(value);
   }
-  return env;
+  if (rejected.length) return { env, error: `checker_env 에 허용되지 않은 키가 있습니다(GVSKB_* · PYTHONUTF8 · PYTHONIOENCODING 만 가능): ${rejected.join(", ")}` };
+  return { env, error: null };
 }
 
-async function checkerEnvForProject(project, base = process.env) {
+/**
+ * 체커에 넘길 env. `trusted` 가 false 면 프로젝트 사본을 **읽지 않는다** — 사본은 lock 지문이 맞을 때만
+ * 믿을 수 있고(H4), 그 전에는 하네스가 배포한 원본 프로파일만 쓴다.
+ */
+async function checkerEnvForProject(project, base = process.env, { trusted = true } = {}) {
   const snapshot = join(project, ".vibecode-harness", "policy", "institution-profile.yaml");
-  const source = (await pathExists(snapshot)) ? snapshot : INSTITUTION_PROFILE_PATH;
-  let overrides = {};
-  try { overrides = parseCheckerEnvBlock(await readFile(source, "utf8")); } catch { overrides = {}; }
-  return { env: { ...base, ...overrides }, overrides };
+  const source = trusted && (await pathExists(snapshot)) ? snapshot : INSTITUTION_PROFILE_PATH;
+  let parsed = { env: {}, error: null };
+  try { parsed = parseCheckerEnvBlock(await readFile(source, "utf8")); } catch (error) { parsed = { env: {}, error: `기관 프로파일을 읽지 못했습니다: ${error.message}` }; }
+  return { env: { ...base, ...parsed.env }, overrides: parsed.env, error: parsed.error, source: source === snapshot ? "project_snapshot" : "harness_default" };
 }
 
 /**
@@ -538,6 +580,14 @@ async function policyCheck(project, lock) {
   await digestCheck("checker_evidence_sha256", join(project, ".vibecode-harness", "lib", "checker-evidence.mjs"), "프로젝트의 체커 증적 구성 모듈 사본이 없습니다. 승인된 하네스를 다시 적용하세요.", "체커 증적 구성 모듈이 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
   if (lock.tools?.includes("claude-code")) {
     await digestCheck("claude_hook_sha256", join(project, ".vibecode-harness", "bin", "claude-pre-tool.mjs"), "Claude Code 훅 사본이 없습니다. 승인된 하네스를 다시 적용하세요.", "Claude Code 훅 사본이 변경되었습니다. 승인된 하네스를 다시 적용하세요.");
+    // M1 — settings.json 은 지문 대상이 아니라서 훅 등록을 지워도 아무도 몰랐다. 현행 형식 항목(matcher 포함)이 있어야 한다.
+    const settingsPath = join(project, ".claude", "settings.json");
+    try {
+      const settings = await readJson(settingsPath);
+      if (!(settings.hooks?.PreToolUse || []).some(isCurrentClaudeHookEntry)) failures.push("Claude Code 훅 등록(.claude/settings.json)이 없거나 구형입니다 — gg update 로 다시 등록하세요.");
+    } catch {
+      failures.push("Claude Code 훅 등록 파일(.claude/settings.json)을 읽을 수 없습니다 — gg update 로 다시 등록하세요.");
+    }
   }
   // policy_profile 은 지문 대상 파일이 아니라 lock 의 값이다 — runtime 과 어긋나면 손으로 고친 것이다.
   if (lock.policy_profile && lock.runtime_profile && lock.policy_profile !== policyProfileForRuntime(lock.runtime_profile)) {
@@ -757,7 +807,8 @@ async function runStandardTests(project, lock, options) {
 async function runChecker(project, lock, baseEnv = process.env) {
   const bundle = await runningBundleStatus();
   if (!["developer_install", "verified"].includes(bundle.status)) return { status: "incomplete", reason: "설치된 승인 번들의 무결성을 확인할 수 없습니다. 공식 복구 설치 후 다시 시도하세요.", bundle };
-  const { env, overrides: checkerEnv } = await checkerEnvForProject(project, baseEnv);
+  const { env, overrides: checkerEnv, error: checkerEnvError } = await checkerEnvForProject(project, baseEnv);
+  if (checkerEnvError) return { status: "incomplete", reason: `기관 프로파일의 checker_env 를 적용할 수 없습니다 — ${checkerEnvError}` };
   const checker = await checkerCommand(env);
   if (!checker) return { status: "incomplete", reason: "vibecode-checker(gvskb)를 찾을 수 없습니다." };
   // 47차 — 버전 하한. 0.6 아래 체커는 옵션 없이는 패키지를 보지 않는다(조용한 초록불).
@@ -778,24 +829,13 @@ async function runChecker(project, lock, baseEnv = process.env) {
   const args = ["scan", project, "--format", "json", "--stdout", "--profile", profile, "--include-installed", "--env", lock.level === "L3" ? "E2" : "E1", "--fail-on", "block"];
   const result = await run(checker.command, args, { cwd: project, env });
   if (result.code === null) return { status: "incomplete", reason: "체커를 실행할 수 없습니다.", stderr: result.stderr.slice(-2000) };
+  // 비판정 종료코드(64 사용법 오류·66 경로 없음)는 verdict 와 무관하게 검사가 아니다(L5).
+  if ([64, 66].includes(result.code)) return { status: "incomplete", reason: `체커가 검사를 시작하지 못했습니다(종료코드 ${result.code}).`, exit_code: result.code, stderr: result.stderr.slice(-2000) };
   let report;
   try { report = JSON.parse(result.stdout); }
   catch { return { status: "incomplete", reason: "체커 JSON 결과를 읽을 수 없습니다.", stderr: result.stderr.slice(-2000) }; }
   const scannedFiles = Array.isArray(report.scanned_files) ? report.scanned_files : [];
-  if (scannedFiles.length === 0) return { status: "incomplete", reason: "체커가 검사한 파일이 없습니다. 대상 경로와 지원 언어를 확인하세요.", report };
-  if (report.profile_fallback) return { status: "incomplete", reason: "체커 프로파일 fallback이 발생했습니다.", report };
-  const skipped = Array.isArray(report.skipped_files) ? report.skipped_files : [];
-  const truncated = skipped.some((item) => /max_files|최대 파일 수/i.test(String(item?.reason || "")));
-  if (truncated) return { status: "incomplete", reason: "체커 파일 상한에 도달했습니다. 검사 범위를 나누거나 상한을 조정하세요.", report };
   const declaredDependencies = await declaredDependencyCount(project);
-  const audits = Array.isArray(report.dependency_audit?.audits) ? report.dependency_audit.audits : [];
-  const dependencyUnparsed = audits.some((audit) => audit?.verdict === "unparsed" || audit?.requires_review === true && Number(audit?.parsed_count || 0) === 0);
-  if (declaredDependencies > 0 && dependencyUnparsed) {
-    return { status: "incomplete", reason: "선언된 의존성이 있지만 체커 의존성 감사를 완료하지 못했습니다.", declaredDependencies, report };
-  }
-  // 여기까지 왔다면 결과를 읽었고 검사 범위·프로필·의존성 감사의 완전성도 확인했다.
-  // 그러므로 종료 코드와 무관하게 **먼저 근거를 남긴다** — 차단된 경우가
-  // 근거가 가장 필요한 경우인데 예전에는 그때만 영수증이 없었다.
   const evidence = buildCheckerEvidence({
     checker: checker.source === "bundled" ? "bundled_gvskb" : "system_gvskb",
     report,
@@ -804,22 +844,43 @@ async function runChecker(project, lock, baseEnv = process.env) {
     reportSha256: createHash("sha256").update(result.stdout).digest("hex"),
     exitCode: result.code
   });
-  const reportPath = await writeReceipt(project, "checker-evidence", { ...evidence, checker_env: checkerEnv, checker_status_source: info.source });
-  const common = { reportPath, scannedFiles: scannedFiles.length, findings: report.summary?.finding_count ?? null, gate_verdict: evidence.checker_gate_verdict, checker_status: evidence.checker_status, dependency_check: evidence.checker_dependency_check };
-  // 47차 — 상태는 gate.verdict 표(CHECKER_STATUS_BY_VERDICT)로 정한다. 종료코드는 교차 확인이다.
-  // 근거를 남긴 뒤에도 차단은 차단이다 — 완화하지 않는다.
+  const receipt = () => writeReceipt(project, "checker-evidence", { ...evidence, checker_env: checkerEnv, checker_status_source: info.source });
+  const common = { scannedFiles: scannedFiles.length, findings: report.summary?.finding_count ?? null, gate_verdict: evidence.checker_gate_verdict, checker_status: evidence.checker_status, dependency_check: evidence.checker_dependency_check };
+  // 계약 규칙 ① — **차단은 어떤 미완 사유보다 먼저다**(M2). 범위 결손·프로파일 fallback 이 있어도 차단을
+  // '불완전'으로 낮추지 않는다. 근거는 먼저 남긴다 — 차단된 경우가 근거가 가장 필요한 경우다.
   if (evidence.checker_status === "blocked") {
-    return { status: "blocked", reason: evidence.checker_gate_verdict === "blocked" ? `체커 판정 차단 — ${evidence.checker_gate_reason || "차단 근거는 영수증 참조"}` : "체커가 공식 차단 종료 코드를 반환했습니다.", exit_code: result.code, ...common, stderr: result.stderr.slice(-2000) };
+    const reportPath = await receipt();
+    return { status: "blocked", reason: evidence.checker_gate_verdict === "blocked" ? `체커 판정 차단 — ${evidence.checker_gate_reason || "차단 근거는 영수증 참조"}` : "체커가 공식 차단 종료 코드를 반환했습니다.", exit_code: result.code, reportPath, ...common, stderr: result.stderr.slice(-2000) };
   }
+  // 차단이 아니면 검사가 온전했는지 본다 — 온전하지 않은 결과는 근거가 되지 못하므로 영수증을 남기지 않는다.
+  if (scannedFiles.length === 0) return { status: "incomplete", reason: "체커가 검사한 파일이 없습니다. 대상 경로와 지원 언어를 확인하세요.", report };
+  if (report.profile_fallback) return { status: "incomplete", reason: "체커 프로파일 fallback이 발생했습니다.", report };
+  const skipped = Array.isArray(report.skipped_files) ? report.skipped_files : [];
+  const truncated = skipped.some((item) => /max_files|최대 파일 수/i.test(String(item?.reason || "")));
+  if (truncated) return { status: "incomplete", reason: "체커 파일 상한에 도달했습니다. 검사 범위를 나누거나 상한을 조정하세요.", report };
+  const audits = Array.isArray(report.dependency_audit?.audits) ? report.dependency_audit.audits : [];
+  const dependencyUnparsed = audits.some((audit) => audit?.verdict === "unparsed" || audit?.requires_review === true && Number(audit?.parsed_count || 0) === 0);
+  if (declaredDependencies > 0 && dependencyUnparsed) {
+    return { status: "incomplete", reason: "선언된 의존성이 있지만 체커 의존성 감사를 완료하지 못했습니다.", declaredDependencies, report };
+  }
+  // 패키지 검사를 생략한 결과(`--deps off`·GVSKB_DEPS_MODE=off)는 패키지 취약점이 빠진 결과다(L3).
+  if (evidence.checker_dependency_check?.mode === "off") {
+    return { status: "incomplete", reason: "체커가 패키지 검사를 생략했습니다(dependency_check.mode=off). 기관 설정 GVSKB_DEPS_MODE 를 확인하세요.", report };
+  }
+  // 0.6 이상인데 gate 가 없으면 계약 밖의 결과다 — 통과가 아니다(M3). 무엇을 돌려줬는지는 영수증으로 남긴다.
+  if (!evidence.checker_gate_verdict) {
+    const reportPath = await receipt();
+    return { status: "incomplete", reason: "체커 결과에 배포 판정(gate.verdict)이 없습니다 — 체커 설치 상태를 확인하세요.", exit_code: result.code, reportPath, ...common };
+  }
+  const reportPath = await receipt();
   // 판정 불가는 차단이 아니라 '검사하지 못함'이다 — 막힌 곳이 아니라 빠진 것을 고쳐야 한다.
   if (evidence.checker_status === "undetermined") {
-    return { status: "incomplete", reason: `체커가 판정하지 못했습니다: ${undeterminedReason(report)}`, exit_code: result.code, intel_gap: evidence.checker_intel_gap, ...common, stderr: result.stderr.slice(-2000) };
+    return { status: "incomplete", reason: `체커가 판정하지 못했습니다: ${undeterminedReason(report)}`, exit_code: result.code, intel_gap: evidence.checker_intel_gap, reportPath, ...common, stderr: result.stderr.slice(-2000) };
   }
   if (evidence.checker_status !== "review_required") {
-    // 종료코드도 verdict 도 읽지 못했다 — 모르는 것은 통과가 아니다.
-    return { status: "incomplete", reason: "체커 판정을 읽지 못했습니다(gate.verdict 와 종료코드 모두 해석 불가).", exit_code: result.code, ...common, stderr: result.stderr.slice(-2000) };
+    return { status: "incomplete", reason: "체커 판정을 읽지 못했습니다(gate.verdict 와 종료코드 모두 해석 불가).", exit_code: result.code, reportPath, ...common, stderr: result.stderr.slice(-2000) };
   }
-  return { status: "review_required", ...common, conditional_criteria: evidence.checker_conditional_criteria };
+  return { status: "review_required", reportPath, ...common, conditional_criteria: evidence.checker_conditional_criteria };
 }
 
 async function packageCommand(options) {
@@ -853,7 +914,13 @@ async function packageCommand(options) {
     process.exitCode = EXIT.CHECKER_INCOMPLETE;
     return;
   }
-  const { env, overrides: checkerEnv } = await checkerEnvForProject(project);
+  const { env, overrides: checkerEnv, error: checkerEnvError } = await checkerEnvForProject(project);
+  if (checkerEnvError) {
+    const receipt = await writeReceipt(project, "package-check", { kind: "package_check", status: "incomplete", reason: checkerEnvError, name, version, ecosystem });
+    print({ status: "incomplete", reason: `기관 프로파일의 checker_env 를 적용할 수 없습니다 — ${checkerEnvError}`, receipt });
+    process.exitCode = EXIT.CHECKER_INCOMPLETE;
+    return;
+  }
   const checker = await checkerCommand(env);
   if (!checker) {
     const receipt = await writeReceipt(project, "package-check", { kind: "package_check", status: "incomplete", reason: "vibecode-checker를 찾을 수 없습니다.", name, version, ecosystem });
@@ -893,10 +960,22 @@ async function packageCommand(options) {
     reason = `체커가 이 패키지를 판정하지 못했습니다(위협정보 없음 또는 조회 실패, check_mode=${checkMode || "미상"}). '안전'이 아닙니다 — gvskb update-intel 또는 GVSKB_INTEL_DIR 반입 후 다시 확인하세요.`;
   } else if (decision.requires_review) status = "review_required";
   else status = "passed";
+  // 종료코드 교차 확인(M5) — scan 과 같은 규칙. 체커 check-package: 0 통과 · 1 취약/판정 불가/검토 · 2 차단.
+  // JSON 이 '통과'인데 종료코드가 2 면 차단으로 올리고 충돌을 남긴다. 반대 방향(JSON 차단·종료 0)도 차단이다.
+  let exitConflict = null;
+  if (Number.isInteger(result.code)) {
+    const exitStatus = result.code === 2 ? "blocked" : result.code === 1 ? "review_required" : result.code === 0 ? "passed" : null;
+    const rank = { blocked: 3, incomplete: 2, review_required: 1, passed: 0 };
+    if (exitStatus && exitStatus !== status && !(status === "incomplete" && exitStatus === "review_required") && !(status === "blocked" && exitStatus === "review_required" && vulnerable)) {
+      exitConflict = { exit_code: result.code, json_status: status };
+      if (rank[exitStatus] > rank[status]) status = exitStatus;
+    }
+  }
   const receipt = await writeReceipt(project, "package-check", {
     kind: "package_check", status, reason, name, version, ecosystem, checker: checker.source === "bundled" ? "bundled_gvskb" : "system_gvskb", checker_exit_code: result.code,
+    checker_exit_conflict: exitConflict,
     checker_version: info.version, check_mode: checkMode, checker_env: checkerEnv,
-    verdict: decision.verdict, severity: decision.verdict_severity, requires_review: Boolean(decision.requires_review), in_kev: Boolean(decision.in_kev), checked: Boolean(decision.checked),
+    verdict: decision.verdict, severity: decision.verdict_severity ?? null, requires_review: Boolean(decision.requires_review), in_kev: Boolean(decision.in_kev), checked: Boolean(decision.checked),
     vulnerability_count: Number(decision.vulnerability_count || 0)
   });
   const next = status === "blocked" ? "대체 패키지 또는 승인된 예외 검토를 선택하세요."
@@ -1435,6 +1514,9 @@ async function updateCommand(options) {
   // 47차 — 계약 표식도 함께 올린다(구 lock 의 pending_upstream_machine_verdict → gate_v1).
   const updated = {
     ...lock, ...after,
+    // L8 — runtime 과 어긋난 policy_profile 은 update 가 복구한다(migrate 는 같은 트랙이면 unchanged 로 끝난다).
+    policy_profile: policyProfileForRuntime(lock.runtime_profile),
+    allowed_languages: getPolicyProfile(policyProfileForRuntime(lock.runtime_profile))?.allowed_languages || lock.allowed_languages,
     checker_machine_verdict: "gate_v1",
     checker_status_by_verdict: { ...CHECKER_STATUS_BY_VERDICT },
     min_checker_version: MIN_CHECKER_VERSION,
@@ -1573,7 +1655,11 @@ async function doctorCommand(options) {
   let lock = null;
   let lockError = null;
   try { lock = await getLock(project); } catch (error) { lockError = error.message; }
-  const { env: checkerEnvironment, overrides: checkerEnv } = await checkerEnvForProject(project);
+  // H4 — 프로젝트 사본의 checker_env 는 lock 지문이 맞을 때만 쓴다. 지문 검사 전에 사본 env 로 체커를 띄우면
+  // 공유받은 저장소의 프로파일이 doctor 한 번으로 임의 환경을 넣는다. 실패하면 하네스 원본 프로파일만 쓰고 경고한다.
+  const policyFailures = lock ? await policyCheck(project, lock.value) : null;
+  const envTrusted = Boolean(lock) && policyFailures.length === 0;
+  const { env: checkerEnvironment, overrides: checkerEnv, error: checkerEnvError, source: checkerEnvSource } = await checkerEnvForProject(project, process.env, { trusted: envTrusted });
   const [git, checker] = await Promise.all([commandAvailable("git"), checkerCommand(checkerEnvironment)]);
   const bundle = await runningBundleStatus();
   const nodeVersion = process.version;
@@ -1593,9 +1679,12 @@ async function doctorCommand(options) {
       commit: info.commit,
       intel: intel ? { state: intel.state ?? null, as_of: intel.as_of ?? null, age_days: intel.age_days ?? null, max_age_days: intel.max_age_days ?? null, missing: intel.missing ?? [], stale: intel.stale ?? [], signature: intel.signature ?? null, offline_mode: intel.offline_mode ?? null } : null,
       checker_env: checkerEnv,
+      checker_env_source: checkerEnvSource,
       status_source: info.source
     };
     if (versionFailure) checkerWarnings.push(`ERROR ${versionFailure}`);
+    if (lock && !envTrusted) checkerWarnings.push("WARN 정책 지문 검사에 실패해 프로젝트 사본의 checker_env 를 적용하지 않았습니다(하네스 원본 프로파일 사용). gg update 로 사본을 복구하세요.");
+    if (checkerEnvError) checkerWarnings.push(`WARN ${checkerEnvError}`);
     if (intel?.state === "missing") checkerWarnings.push("WARN 위협정보 캐시가 없습니다 — 패키지 검사가 전부 판정 불가가 됩니다. (인터넷망) gvskb update-intel · (폐쇄망) GVSKB_INTEL_DIR 반입");
     else if (intel?.state === "stale") checkerWarnings.push(`WARN 위협정보가 ${intel.age_days ?? "?"}일 전 것입니다(기준 ${intel.max_age_days ?? "?"}일) — 패키지 판정이 조건부로 내려갑니다.`);
     else if (!intel && info.source !== "status") checkerWarnings.push("WARN 체커가 status --json 을 지원하지 않아 위협정보 상태를 확인하지 못했습니다.");
@@ -1614,8 +1703,10 @@ async function doctorCommand(options) {
     let hookState = "missing";
     try {
       const parsed = await readJson(settings);
-      const hooks = (parsed.hooks?.PreToolUse || []).flatMap((entry) => Array.isArray(entry?.hooks) ? entry.hooks : []);
-      if (hooks.some(isCurrentClaudeHook)) hookState = "current";
+      const entries = parsed.hooks?.PreToolUse || [];
+      const hooks = entries.flatMap((entry) => Array.isArray(entry?.hooks) ? entry.hooks : []);
+      // matcher 까지 현행이어야 '적용됨'이다(M1) — 훅 명령만 현행이고 matcher 가 좁으면 PowerShell 도구는 여전히 빠져나간다.
+      if (entries.some(isCurrentClaudeHookEntry)) hookState = "current";
       else if (hooks.some(isVibecodeClaudeHook)) hookState = "legacy";
     } catch { /* reported below */ }
     if (!(await pathExists(claude)) || hookState === "missing") adapters.claude_code = "repair_required";
@@ -1645,7 +1736,7 @@ async function doctorCommand(options) {
       ? (checkerReport.status === "version_too_old" ? `체커가 너무 오래됐습니다(${checkerReport.version} < ${MIN_CHECKER_VERSION}). 체커를 올린 뒤 다시 실행하세요.` : "하네스와 체커 실행 경로를 확인했습니다.")
       : "체커가 없어 표준 보안 점검은 실행할 수 없습니다.")
   };
-  if (lock) result.policy_failures = await policyCheck(project, lock.value);
+  if (lock) result.policy_failures = policyFailures;
   // 범위 과다는 경고다, 실패가 아니다. 이미 그렇게 초기화돼 굴러가는 프로젝트를
   // 여기서 막으면 사용자는 doctor 를 안 돌리게 될 뿐이다 — 대신 눈에 띄게 남긴다.
   const scope = await broadScopeFindings(project);
