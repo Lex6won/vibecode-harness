@@ -419,7 +419,38 @@ test("M2: verdict blocked 는 파일 상한·의존성 미파싱 같은 미완 �
     const run = await runGg(project, ["verify", "--local-checker", "--run-tests"], checker.env);
     assert.equal(run.code, EXIT.CHECKER_BLOCK, run.stdout + run.stderr);
     assert.equal(printed(run).status, "blocked");
-    assert.equal((await latestReceipt(project, "-checker-evidence.json")).checker_status, "blocked");
+    const receipt = await latestReceipt(project, "-checker-evidence.json");
+    assert.equal(receipt.checker_status, "blocked");
+    // 2차 리뷰 L2 — 차단을 먼저 내되 범위 결손 사유는 영수증에 남는다.
+    assert.deepEqual(receipt.coverage_incomplete_reasons, ["file_limit_truncated", "dependency_audit_unparsed"]);
+  } finally {
+    await cleanup(project, checker.directory);
+  }
+});
+
+test("2차 리뷰 M4: 하네스 Git 훅이 설치됐는데 core.hooksPath 가 풀리면 verify 가 막는다", async () => {
+  const checker = await fakeChecker({ report: report({ verdict: "approved", reason: "", block_reasons: [], conditional_criteria: [], intel_gap: "" }) });
+  const project = await mkdtemp(join(tmpdir(), "vibecode-harness-hookspath-"));
+  const git = (args) => new Promise((resolvePromise) => {
+    const child = spawn("git", args, { cwd: project, shell: false, windowsHide: true });
+    let stdout = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.on("close", (code) => resolvePromise({ code, stdout }));
+  });
+  try {
+    const initGit = await git(["init", "-q"]);
+    if (initGit.code !== 0) return; // git 이 없는 환경 — 이 검사는 해당 없음
+    const init = await runGg(project, ["init", "--tools", "codex", "--runtime", "typescript_web", "--level", "L1"], checker.env);
+    assert.equal(init.code, 0, init.stderr || init.stdout);
+    await writeFile(join(project, "package.json"), JSON.stringify({ name: "hp", private: true, type: "module", scripts: { test: "node --test" } }));
+    await writeFile(join(project, "app.ts"), "export const ok = true;\n");
+    assert.equal((await git(["config", "--get", "core.hooksPath"])).stdout.trim(), ".githooks");
+    const before = await runGg(project, ["verify", "--no-tests"], checker.env);
+    assert.equal(before.code, 0, before.stdout + before.stderr);
+    await git(["config", "--unset", "core.hooksPath"]);
+    const after = await runGg(project, ["verify", "--no-tests"], checker.env);
+    assert.equal(after.code, EXIT.POLICY, after.stdout + after.stderr);
+    assert.match(printed(after).policy_failures.join("\n"), /core\.hooksPath/);
   } finally {
     await cleanup(project, checker.directory);
   }

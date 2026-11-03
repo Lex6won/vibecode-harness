@@ -102,6 +102,78 @@ test("리뷰어 실측 오탐(H5)이 통과한다 — 문서가 안내하는 읽
   }
 });
 
+test("2차 리뷰 M1·M4: 접두 래퍼·eval·xargs·git·find·perl·cp -t·스크립트 쓰기·인코딩 명령 우회가 막힌다", () => {
+  for (const command of [
+    // M1 — 할당·접두 래퍼
+    "FOO=1 rm -rf .vibecode-harness",
+    "command rm -rf .vibecode-harness",
+    "sudo rm -rf .vibecode-harness",
+    "sudo -u root rm -rf .claude",
+    "env rm .githooks/pre-commit",
+    "exec rm .claude/settings.json",
+    "nice -n 10 rm -rf .vibecode-harness",
+    "nohup rm -rf .vibecode-harness",
+    "time rm -rf .githooks",
+    "busybox rm -rf .claude",
+    "eval 'rm -rf .vibecode-harness'",
+    "echo .vibecode-harness | xargs rm -rf",
+    // M4 — 저비용 보강
+    "git config --unset core.hooksPath",
+    "git -c core.hooksPath=/tmp/x commit -m y",
+    "find . -name .vibecode-harness -delete",
+    "find .vibecode-harness -delete",
+    "find .claude -exec rm {} ;",
+    "perl -pi -e 's/a/b/' .vibecode-harness/harness.lock.json",
+    "cp -t .githooks evil",
+    "cp --target-directory=.claude settings.json",
+    "node -e \"require('fs').appendFileSync('.claude/settings.json','x')\"",
+    "node -e \"require('fs').rmSync('.vibecode-harness',{recursive:true})\"",
+    "python -c \"import shutil; shutil.rmtree('.vibecode-harness')\"",
+    "python -c \"import os; os.remove('.claude/settings.json')\"",
+    "python -c \"import pathlib; pathlib.Path('.claude/settings.json').write_bytes(b'')\"",
+    "powershell -EncodedCommand ZQBjAGgAbwA=",
+    "pwsh -enc ZQBjAGgAbwA=",
+    // M3 — 디렉터리 스택
+    "pushd .vibecode-harness; rm policy/x.json",
+    "cd .claude; cd -; cd -; echo x > settings.json",
+    // M2 — 위치가 맞는 글롭은 여전히 막힌다
+    "rm -rf .git/h*",
+    "rm -f .github/workflows/vibecode-h*",
+    "rm -rf .git*",
+    "rm harness.lo*"
+  ]) {
+    assert.match(protectedPathCommandFailure(command) || "", /보호 파일/, `막혀야 한다: ${command}`);
+  }
+});
+
+test("2차 리뷰 M2·M3·L1: 글롭 오탐·popd·명령 없는 리다이렉트가 통과한다", () => {
+  for (const command of [
+    // M2 — 위치·최소 접두가 맞지 않는 글롭
+    "rm -rf .c*",
+    "rm -rf ha*",
+    "rm -f vi*.log",
+    "rm -rf src/ho*",
+    // M3 — popd·cd - 로 보호 폴더를 벗어난 뒤의 쓰기
+    "pushd .vibecode-harness; popd; echo x > notes.txt",
+    "cd .claude; cd -; echo x > settings.json",
+    // L1 — 명령 없는 리다이렉트(예전에는 TypeError)
+    ">out.log",
+    "> out.log",
+    // 읽기·무해한 조합
+    "git config --get core.hooksPath",
+    "git -c user.name=x commit -m y",
+    "find . -name '*.log' -delete",
+    "find .vibecode-harness -name '*.json'",
+    "echo src | xargs rm -rf",
+    "sudo ls .vibecode-harness",
+    "powershell -Command Get-Content .claude/settings.json",
+    "perl -pe 's/a/b/' .vibecode-harness/harness.lock.json"
+  ]) {
+    assert.doesNotThrow(() => protectedPathCommandFailure(command), `예외가 나면 안 된다: ${command}`);
+    assert.equal(protectedPathCommandFailure(command), null, `통과해야 한다: ${command} -> ${protectedPathCommandFailure(command)}`);
+  }
+});
+
 test("보호 경로에 쓰는 명령은 막고 읽는 명령은 통과", () => {
   for (const command of [
     "echo '{}' > .claude/settings.json",
