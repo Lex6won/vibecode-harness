@@ -995,7 +995,9 @@ async function packageCommand(options) {
     verdict: decision.verdict, severity: decision.verdict_severity ?? null, requires_review: Boolean(decision.requires_review), in_kev: Boolean(decision.in_kev), checked: Boolean(decision.checked),
     vulnerability_count: Number(decision.vulnerability_count || 0), malicious_possible: maliciousPossible
   });
-  const next = status === "blocked" ? "대체 패키지 또는 승인된 예외 검토를 선택하세요."
+  // 악성 차단은 체커가 종류별로 할 일을 적어 준다(확정 / 버전 미확인 / 구형식 위협정보).
+  const next = status === "blocked" && decision.is_malicious_package && decision.note ? String(decision.note)
+    : status === "blocked" ? "대체 패키지 또는 승인된 예외 검토를 선택하세요."
     : status === "incomplete" ? "위협정보를 갱신·반입한 뒤 다시 gg package check 를 실행하세요."
       : maliciousPossible.length ? `악성 권고(${maliciousPossible.slice(0, 3).join(", ")})가 있습니다. 공식 저장소에서 의도한 정상 패키지인지 확인한 뒤 승인된 설치 절차에서 진행하세요.`
         : "패키지 설치는 승인된 설치 절차에서 진행하세요.";

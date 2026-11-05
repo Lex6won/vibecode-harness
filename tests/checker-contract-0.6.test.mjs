@@ -354,6 +354,17 @@ test("package check: 특정 버전 악성 권고인데 설치 버전을 모르�
   assert.match(out.next, /MAL-2026-2307/, "the next step must name the advisory, not just say proceed");
 });
 
+test("악성 차단은 체커가 적어 준 할 일을 그대로 안내한다", async () => {
+  const note = "악성으로 확정된 것은 아닙니다 — 공식 저장소에서 이름을 확인하세요.";
+  const { run, out } = await packageCheck({
+    verdict: "malicious", is_malicious_package: true, checked: true, requires_review: true, note,
+    check_mode: "local", exit_code: 2
+  });
+  assert.equal(run.code, 20, run.stdout + run.stderr);
+  assert.equal(out.status, "blocked");
+  assert.equal(out.next, note);
+});
+
 // ---------------------------------------------------------------------------
 // 4. lock 무결성 — 지문이 없으면 통과가 아니다
 // ---------------------------------------------------------------------------
