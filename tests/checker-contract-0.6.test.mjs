@@ -341,6 +341,17 @@ test("package check: 깨끗하면 passed(0), 검토 필요면 review_required(0)
   assert.equal(review.out.status, "review_required");
 });
 
+test("package check: 특정 버전 악성 권고인데 설치 버전을 모르면 차단이 아니라 review_required(체커 0.6.2)", async () => {
+  // 체커가 권고의 영향 버전까지 대조하게 되면서, 버전 미고정은 악성 확정이 아니라 '판정 불가'로 온다.
+  const { run, out } = await packageCheck({
+    verdict: "checked_clean", checked: true, vulnerability_count: 0, requires_review: true, is_malicious_package: false,
+    malicious_possible: [{ id: "MAL-2026-2307", versions: ["0.30.4", "1.14.1"], reason: "version_unpinned" }],
+    check_mode: "local", exit_code: 1
+  });
+  assert.equal(run.code, 0, run.stdout + run.stderr);
+  assert.equal(out.status, "review_required");
+});
+
 // ---------------------------------------------------------------------------
 // 4. lock 무결성 — 지문이 없으면 통과가 아니다
 // ---------------------------------------------------------------------------
