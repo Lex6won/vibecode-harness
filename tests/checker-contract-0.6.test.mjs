@@ -350,6 +350,8 @@ test("package check: 특정 버전 악성 권고인데 설치 버전을 모르�
   });
   assert.equal(run.code, 0, run.stdout + run.stderr);
   assert.equal(out.status, "review_required");
+  assert.deepEqual(out.malicious_possible, ["MAL-2026-2307"], "the advisory id must reach the output");
+  assert.match(out.next, /MAL-2026-2307/, "the next step must name the advisory, not just say proceed");
 });
 
 // ---------------------------------------------------------------------------
