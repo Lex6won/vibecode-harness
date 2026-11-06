@@ -20,3 +20,6 @@ Thumbs.db
 installer/private/
 dist/
 release/
+
+# 개발 문서는 저장소에 두지 않는다
+docs/

@@ -241,7 +241,4 @@ L2 이상에서는 프로젝트에 테스트 명령이 필요합니다. `package
 ## 더 알아보기
 
 - 보안 체커: [Lex6won/vibecode-checker](https://github.com/Lex6won/vibecode-checker)
-- Windows 설치 상세 안내: [docs/18_github_pilot_install.md](./docs/18_github_pilot_install.md)
-- 다중 AI 도구·공식 EXE·업데이트 운영: [docs/19_multi_tool_install_and_updates.md](./docs/19_multi_tool_install_and_updates.md)
-- 공식 EXE 배포 승인·서명·포털 게시: [docs/20_release_approval_and_deployment.md](./docs/20_release_approval_and_deployment.md)
 - 체커의 MCP 연결과 보고서 읽는 법: 체커 저장소 README
