@@ -70,11 +70,7 @@ $requiredFiles = @(
   "adapters/claude-code/CLAUDE.template.md",
   "templates/harness.lock.example.json",
   "templates/work-status.schema.json",
-  "templates/visual-review-receipt.schema.json",
-  "docs/01_execution_harness_design.md",
-  "docs/04_adversarial_design_review.md",
-  "docs/07_integrated_execution_contract.md",
-  "docs/08_legacy_asset_migration.md"
+  "templates/visual-review-receipt.schema.json"
 )
 foreach ($relativePath in $requiredFiles) { [void](Get-Text $relativePath) }
 

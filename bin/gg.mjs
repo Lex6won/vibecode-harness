@@ -967,6 +967,8 @@ async function packageCommand(options) {
   const vulnerable = Number(decision.vulnerability_count || 0) > 0 || decision.verdict === "vulnerable";
   const unchecked = decision.checked === false && !hardBlock;
   const checkMode = typeof decision.check_mode === "string" ? decision.check_mode : null;
+  // 특정 버전을 지목한 악성 권고가 있는데 이 버전의 해당 여부를 판정하지 못했다 — 통과로 읽히면 안 된다.
+  const maliciousPossible = Array.isArray(decision.malicious_possible) ? decision.malicious_possible.map((row) => String(row?.id ?? "")).filter(Boolean) : [];
   let status;
   let reason = null;
   if (hardBlock || vulnerable) status = "blocked";
@@ -991,12 +993,15 @@ async function packageCommand(options) {
     checker_exit_conflict: exitConflict,
     checker_version: info.version, check_mode: checkMode, checker_env: checkerEnv,
     verdict: decision.verdict, severity: decision.verdict_severity ?? null, requires_review: Boolean(decision.requires_review), in_kev: Boolean(decision.in_kev), checked: Boolean(decision.checked),
-    vulnerability_count: Number(decision.vulnerability_count || 0)
+    vulnerability_count: Number(decision.vulnerability_count || 0), malicious_possible: maliciousPossible
   });
-  const next = status === "blocked" ? "대체 패키지 또는 승인된 예외 검토를 선택하세요."
+  // 악성 차단은 체커가 종류별로 할 일을 적어 준다(확정 / 버전 미확인 / 구형식 위협정보).
+  const next = status === "blocked" && decision.is_malicious_package && decision.note ? String(decision.note)
+    : status === "blocked" ? "대체 패키지 또는 승인된 예외 검토를 선택하세요."
     : status === "incomplete" ? "위협정보를 갱신·반입한 뒤 다시 gg package check 를 실행하세요."
-      : "패키지 설치는 승인된 설치 절차에서 진행하세요.";
-  print({ status, reason, name, version, ecosystem, verdict: decision.verdict, checked: Boolean(decision.checked), check_mode: checkMode, requires_review: Boolean(decision.requires_review), receipt, next });
+      : maliciousPossible.length ? `악성 권고(${maliciousPossible.slice(0, 3).join(", ")})가 있습니다. 공식 저장소에서 의도한 정상 패키지인지 확인한 뒤 승인된 설치 절차에서 진행하세요.`
+        : "패키지 설치는 승인된 설치 절차에서 진행하세요.";
+  print({ status, reason, name, version, ecosystem, verdict: decision.verdict, checked: Boolean(decision.checked), check_mode: checkMode, requires_review: Boolean(decision.requires_review), malicious_possible: maliciousPossible, receipt, next });
   if (status === "blocked") process.exitCode = EXIT.PACKAGE;
   if (status === "incomplete") process.exitCode = EXIT.CHECKER_INCOMPLETE;
 }
